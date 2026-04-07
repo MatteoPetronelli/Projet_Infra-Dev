@@ -72,6 +72,18 @@ instance/
 .webassets-cache
 .scrapy
 docs/_build/
+node_modules/
+.output
+.vercel
+.netlify
+.wrangler
+.svelte-kit/
+build/
+.env.*
+!.env.example
+!.env.test
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
 
 # =========================
 # Outils, Notebooks et Éditeurs
@@ -126,3 +138,5 @@ db.sqlite3-journal
 Thumbs.db
 *.mo
 *.pot
+*.csv
+*.pkl
