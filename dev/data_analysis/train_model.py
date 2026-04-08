@@ -4,14 +4,14 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 import joblib
 
-chemin_fichier = "data/processed/dvf_clean.csv"
-df = pl.read_csv(chemin_fichier)
+df = pl.read_csv("data/processed/dvf_clean.csv")
 
 df = df.filter(
     (pl.col("valeur_fonciere") >= 20000) &
     (pl.col("valeur_fonciere") <= 2000000) &
     (pl.col("surface_reelle_bati") >= 9) &
-    (pl.col("surface_reelle_bati") <= 10000)
+    (pl.col("surface_reelle_bati") <= 500) &
+    (pl.col("nombre_pieces_principales") <= 20)
 )
 
 df = df.with_columns(

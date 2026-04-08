@@ -7,6 +7,12 @@ df = df.with_columns(
     (pl.col("type_local") == "Maison").cast(pl.Int32).alias("est_maison")
 )
 
+df = df.filter(
+    (pl.col("surface_reelle_bati") >= 9) &
+    (pl.col("surface_reelle_bati") <= 500) &
+    (pl.col("nombre_pieces_principales") <= 20)
+)
+
 df_sample = df.sample(n=5000, seed=42)
 df_pandas = df_sample.to_pandas()
 
@@ -38,14 +44,10 @@ custom_js = """
 <script>
     window.addEventListener('load', function() {
         var plotElements = document.getElementsByClassName('plotly-graph-div');
-        
         if (plotElements.length > 0) {
             var myPlot = plotElements[0];
-            
             myPlot.on('plotly_click', function(data) {
                 var pt = data.points[0];
-                
-                // Grâce à custom_data, l'index est maintenant garanti à 100%
                 var payload = {
                     lat: pt.lat,
                     lon: pt.lon,
@@ -53,7 +55,6 @@ custom_js = """
                     pieces: pt.customdata[1],
                     est_maison: pt.customdata[2]
                 };
-                
                 window.parent.postMessage(payload, '*');
             });
         }
