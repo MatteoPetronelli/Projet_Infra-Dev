@@ -36,6 +36,6 @@ y_pred = modele.predict(X_test)
 mae = mean_absolute_error(y_test, y_pred)
 r2 = r2_score(y_test, y_pred)
 
-print(f"MAE : {mae:,.2f} € | R2 : {r2:.2f}")
+print(f"MAE: {mae:,.2f} EUR", f"R2: {r2:.4f}")
 
 joblib.dump(modele, "data/processed/modele_ymmo.pkl")

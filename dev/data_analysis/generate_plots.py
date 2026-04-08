@@ -35,10 +35,21 @@ fig = px.scatter_map(
     size_max=15,
     zoom=4,
     map_style="carto-positron",
-    title="Carte interactive des transactions (Cliquez sur un point)"
+    title="Carte interactive des transactions"
 )
 
 html_content = fig.to_html(include_plotlyjs="cdn", full_html=True)
+
+if not html_content.startswith('<!DOCTYPE html>'):
+    html_content = '<!DOCTYPE html>\n' + html_content
+
+css_fix = """
+<style>
+    canvas, img, video {
+        overflow: clip !important;
+    }
+</style>
+"""
 
 custom_js = """
 <script>
@@ -62,6 +73,7 @@ custom_js = """
 </script>
 """
 
+html_content = html_content.replace('</head>', f'{css_fix}</head>')
 html_content = html_content.replace('</body>', f'{custom_js}</body>')
 
 with open("carte_prix_immobiliers.html", "w", encoding="utf-8") as f:
