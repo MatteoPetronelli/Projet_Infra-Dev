@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field, EmailStr
+from typing import List, Optional
 
 class PredictionInput(BaseModel):
     surface_reelle_bati: float = Field(..., gt=0, lt=10001)
@@ -10,3 +11,21 @@ class PredictionInput(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+class Bien(BaseModel):
+    id: int
+    titre: str
+    prix: float
+    surface: float
+    pieces: int
+    type_bien: str  # "Maison" ou "Appartement"
+    est_vendu: bool = False
+    ville: str
+
+class BienCreate(BaseModel):
+    titre: str
+    prix: float
+    surface: float
+    pieces: int
+    type_bien: str
+    ville: str

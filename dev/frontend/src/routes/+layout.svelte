@@ -44,6 +44,7 @@
         {#if user}
           <nav class="mt-6 flex items-center gap-4 bg-white px-6 py-2 rounded-2xl shadow-sm border border-gray-100 animate-pop">
             <a href="/estimer" class="text-sm font-bold {($page.url.pathname as string) === '/estimer' ? 'text-blue-600' : 'text-gray-400'}">Estimateur</a>
+            <a href="/catalogue" class="text-sm font-bold {($page.url.pathname as string) === '/catalogue' ? 'text-blue-600' : 'text-gray-400'}">Catalogue</a>
             
             {#if user.pole === "Direction" || user.pole === "IT et Support"}
               <a href="/admin" class="text-sm font-bold {($page.url.pathname as string) === '/admin' ? 'text-blue-600' : 'text-gray-400'}">Siege</a>
