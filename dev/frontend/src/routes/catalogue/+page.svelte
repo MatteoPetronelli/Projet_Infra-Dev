@@ -148,15 +148,15 @@
   </div>
 
   <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-wrap gap-4 items-end">
-    <div class="flex-1 min-w-[200px]">
+    <div class="flex-1 min-w-50">
       <label for="filtrePrix" class="block text-xs font-bold text-gray-400 uppercase mb-2">Prix Maximum (EUR)</label>
       <input id="filtrePrix" type="number" bind:value={filtrePrixMax} placeholder="Ex: 300000" class="w-full bg-gray-50 border-none rounded-xl py-3 px-4 focus:ring-2 focus:ring-blue-500">
     </div>
-    <div class="flex-1 min-w-[200px]">
+    <div class="flex-1 min-w-50">
       <label for="filtreSurface" class="block text-xs font-bold text-gray-400 uppercase mb-2">Surface Minimum (m2)</label>
       <input id="filtreSurface" type="number" bind:value={filtreSurfaceMin} placeholder="Ex: 50" class="w-full bg-gray-50 border-none rounded-xl py-3 px-4 focus:ring-2 focus:ring-blue-500">
     </div>
-    <div class="flex-1 min-w-[200px]">
+    <div class="flex-1 min-w-50">
       <label for="filtreType" class="block text-xs font-bold text-gray-400 uppercase mb-2">Type de bien</label>
       <select id="filtreType" bind:value={filtreType} class="w-full bg-gray-50 border-none rounded-xl py-3 px-4 focus:ring-2 focus:ring-blue-500">
         <option value="Tous">Tous</option>
@@ -164,7 +164,7 @@
         <option value="Appartement">Appartement</option>
       </select>
     </div>
-    <button onclick={reinitialiserFiltres} class="px-6 py-3 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition h-[48px]">
+    <button onclick={reinitialiserFiltres} class="px-6 py-3 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition h-12">
       Effacer
     </button>
   </div>
