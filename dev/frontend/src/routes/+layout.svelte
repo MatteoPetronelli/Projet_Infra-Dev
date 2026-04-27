@@ -14,6 +14,9 @@
       const res = await fetch('http://localhost:8000/api/auth/me', { credentials: 'include' });
       if (res.ok) {
         user = await res.json();
+        if ($page.url.pathname === '/login' || $page.url.pathname === '/') {
+          goto('/estimer');
+        }
       } else {
         user = null;
         if ($page.url.pathname !== '/login') {

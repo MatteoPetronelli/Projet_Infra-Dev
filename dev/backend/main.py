@@ -43,7 +43,7 @@ async def get_biens():
 @app.post("/api/biens", response_model=Bien)
 async def create_bien(bien: BienCreate):
     global compteur_id
-    nouveau_bien = bien.dict()
+    nouveau_bien = bien.model_dump()
     nouveau_bien["id"] = compteur_id
     nouveau_bien["est_vendu"] = False
     MOCK_BIENS.append(nouveau_bien)
@@ -102,7 +102,7 @@ async def logout(response: Response):
 @app.post("/api/predict")
 async def predict(data: PredictionInput):
     try:
-        result = predict_service.get_prediction(data.dict())
+        result = predict_service.get_prediction(data.model_dump())
         return {"prix_estime": result}
     except Exception as e:
         logger.error(f"Erreur de prediction : {str(e)}")
@@ -156,7 +156,6 @@ except Exception as e:
 
 @app.get("/api/transactions")
 async def get_transactions(prix_max: float = 2000000, surface_min: float = 0):
-    # Simulation d'une requete SQL avec clauses WHERE
     filtered = [
         t for t in DVF_DATA
         if t["valeur_fonciere"] <= prix_max and t["surface_reelle_bati"] >= surface_min
