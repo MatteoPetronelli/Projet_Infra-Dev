@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Chart from 'chart.js/auto';
 
   let stats = $state({
     agences: 12,
@@ -19,6 +20,46 @@
   let chargementAnalysis = $state(false);
   let chargementRetrain = $state(false);
   let demandeReentrainement = $state(false);
+
+  let chartCanvas = $state<HTMLCanvasElement | null>(null);
+  let chartInstance: Chart | null = null;
+
+  $effect(() => {
+    if (reportData && chartCanvas) {
+      if (chartInstance) chartInstance.destroy();
+      
+      chartInstance = new Chart(chartCanvas, {
+        type: 'bar',
+        data: {
+          labels: reportData.performances.map((p: any) => p.agence),
+          datasets: [{
+            label: 'Volume d\'estimations par agence',
+            data: reportData.performances.map((p: any) => p.requetes),
+            backgroundColor: '#3b82f6',
+            borderRadius: 6,
+            borderSkipped: false
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: { 
+              grid: { color: 'rgba(255, 255, 255, 0.05)' }, 
+              ticks: { color: '#9ca3af', font: { family: 'monospace' } } 
+            },
+            x: { 
+              grid: { display: false }, 
+              ticks: { color: '#9ca3af', font: { size: 10 } } 
+            }
+          }
+        }
+      });
+    }
+  });
 
   async function chargerAudit() {
     chargementAudit = true;
@@ -85,6 +126,72 @@
     } finally {
       chargementRetrain = false;
       setTimeout(() => { retrainStatus = null; }, 8000);
+    }
+  }
+
+  async function telechargerPDF() {
+    const element = document.getElementById('rapport-export');
+    if (!element) return;
+
+    const originalBtn = element.querySelector('button') as HTMLButtonElement | null;
+    const originalText = originalBtn ? originalBtn.innerText : '';
+    
+    if (originalBtn) {
+      originalBtn.innerText = 'Generation...';
+      originalBtn.disabled = true;
+      originalBtn.style.opacity = '0.7';
+    }
+
+    const cloneContainer = document.createElement('div');
+    cloneContainer.style.position = 'fixed';
+    cloneContainer.style.left = '-9999px';
+    cloneContainer.style.top = '0';
+    document.body.appendChild(cloneContainer);
+
+    const clone = element.cloneNode(true) as HTMLElement;
+    cloneContainer.appendChild(clone);
+
+    const originalCanvas = element.querySelector('canvas');
+    const clonedCanvas = clone.querySelector('canvas');
+    
+    if (originalCanvas && clonedCanvas) {
+      clonedCanvas.width = originalCanvas.width;
+      clonedCanvas.height = originalCanvas.height;
+      const destCtx = clonedCanvas.getContext('2d');
+      if (destCtx) destCtx.drawImage(originalCanvas, 0, 0);
+    }
+
+    const cloneBtn = clone.querySelector('button');
+    if (cloneBtn) cloneBtn.style.display = 'none';
+
+    try {
+      const htmlToImage = await import('html-to-image');
+      const { jsPDF } = await import('jspdf');
+
+      const dataUrl = await htmlToImage.toPng(clone, { 
+        quality: 0.98, 
+        backgroundColor: '#111827',
+        pixelRatio: 2
+      });
+
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      
+      const imgProps = pdf.getImageProperties(dataUrl);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+      pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save('Rapport_Ymmo_Analytics.pdf');
+      
+    } catch (error) {
+      console.error(error);
+    } finally {
+      document.body.removeChild(cloneContainer);
+      if (originalBtn) {
+        originalBtn.innerText = originalText;
+        originalBtn.disabled = false;
+        originalBtn.style.opacity = '1';
+      }
     }
   }
 
@@ -190,15 +297,26 @@
 
     {#if reportData}
       <div class="mt-8 animate-pop">
-        <div class="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
-          <div class="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+        <div id="rapport-export" class="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+          <div class="p-6 border-b border-white/10 flex flex-col md:flex-row md:justify-between md:items-center bg-white/5 gap-4">
             <div>
               <h4 class="font-bold text-lg text-white">Performances du Reseau</h4>
               <p class="text-xs text-gray-400 mt-1">Periode : {reportData.periode}</p>
             </div>
-            <div class="text-right">
-              <p class="text-2xl font-black text-blue-400">{reportData.precision_moyenne}%</p>
-              <p class="text-xs text-gray-400">Precision Moyenne IA</p>
+            <div class="flex items-center gap-6">
+              <button onclick={telechargerPDF} class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg">
+                Telecharger PDF
+              </button>
+              <div class="md:text-right">
+                <p class="text-3xl font-black text-blue-400">{reportData.precision_moyenne}%</p>
+                <p class="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Precision Moyenne IA</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="p-6 border-b border-white/10 bg-black/20">
+            <div class="h-64 w-full">
+              <canvas bind:this={chartCanvas}></canvas>
             </div>
           </div>
           
@@ -207,22 +325,22 @@
               <thead>
                 <tr class="bg-white/5 text-xs uppercase tracking-widest text-gray-400 border-b border-white/10">
                   <th class="p-4 font-bold">Agence</th>
-                  <th class="p-4 font-bold">Estimations (Vol.)</th>
-                  <th class="p-4 font-bold">Marge d'erreur</th>
-                  <th class="p-4 font-bold">Activite</th>
+                  <th class="p-4 font-bold text-center">Estimations (Vol.)</th>
+                  <th class="p-4 font-bold text-center">Marge d'erreur</th>
+                  <th class="p-4 font-bold text-right">Activite</th>
                 </tr>
               </thead>
               <tbody class="text-sm">
                 {#each reportData.performances as perf}
                   <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
                     <td class="p-4 font-bold text-white">{perf.agence}</td>
-                    <td class="p-4 text-gray-300">{perf.requetes}</td>
-                    <td class="p-4">
+                    <td class="p-4 text-gray-300 font-mono text-center">{perf.requetes}</td>
+                    <td class="p-4 text-center">
                       <span class="px-2 py-1 rounded-md text-xs font-bold {perf.taux_erreur < 7 ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}">
                         {perf.taux_erreur}%
                       </span>
                     </td>
-                    <td class="p-4 font-mono text-xs {perf.tendance.includes('+') ? 'text-green-400' : 'text-red-400'}">
+                    <td class="p-4 font-mono text-xs text-right {perf.tendance.includes('+') ? 'text-green-400' : 'text-red-400'}">
                       {perf.tendance}
                     </td>
                   </tr>
