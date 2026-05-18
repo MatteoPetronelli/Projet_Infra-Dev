@@ -3,7 +3,7 @@ from main import app
 
 client = TestClient(app)
 
-# --- TESTS DU CATALOGUE ---
+# TEST CATALOGUE
 
 def test_get_biens_retourne_liste():
     response = client.get("/api/biens")
@@ -26,10 +26,9 @@ def test_creation_nouveau_bien():
     assert data["est_vendu"] == False
     assert "id" in data
 
-# --- TESTS D'AUTHENTIFICATION ---
+# TEST AUTHENTIFICATION
 
 def test_login_succes_cree_cookie():
-    """Test qu'un bon login renvoie un code 200 et un cookie access_token."""
     credentials = {"email": "directeur@ymmo.fr", "password": "admin123"}
     response = client.post("/api/auth/login", json=credentials)
     
@@ -38,21 +37,18 @@ def test_login_succes_cree_cookie():
     assert response.json()["email"] == "directeur@ymmo.fr"
 
 def test_login_echec_mauvais_mdp():
-    """Test qu'un mauvais mot de passe est bien rejete."""
     credentials = {"email": "directeur@ymmo.fr", "password": "fauxmotdepasse"}
     response = client.post("/api/auth/login", json=credentials)
     
     assert response.status_code == 401
 
 def test_route_protegee_sans_cookie():
-    """Test qu'on ne peut pas acceder a /me sans etre connecte."""
     client.cookies.clear()
     response = client.get("/api/auth/me")
     
     assert response.status_code == 401
 
 def test_acces_admin_sans_droits():
-    """Test qu'on ne peut pas acceder aux donnees du siege sans autorisation."""
     client.cookies.clear()
     response = client.get("/api/admin/reports")
     

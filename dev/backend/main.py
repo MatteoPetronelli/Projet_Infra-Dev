@@ -8,8 +8,11 @@ from core.logger import logger
 from dependencies import check_pole
 from datetime import datetime
 from typing import List
-import polars as pl
 import os
+import sys
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from database.database import get_stats_globales, get_connection
 
 app = FastAPI(title="Ymmo Analytics API")
 
@@ -108,6 +111,11 @@ async def predict(data: PredictionInput):
         logger.error(f"Erreur de prediction : {str(e)}")
         raise YmmoException(status_code=500, detail="Erreur interne du modele IA", error_code="ML_MODEL_ERROR")
 
+@app.get("/api/stats-immobilieres")
+async def stats_immobilieres():
+    data = get_stats_globales()
+    return data
+
 @app.get("/api/admin/audit")
 async def get_audit(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
     logger.info(f"Acces audit par {user['email']}")
@@ -116,9 +124,10 @@ async def get_audit(user: dict = Depends(check_pole(["Direction", "IT et Support
 @app.get("/api/admin/reports")
 async def get_reports(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
     logger.info(f"Generation rapport demandee par {user['email']}")
+    stats = get_stats_globales()
     return {
-        "periode": "Avril 2026",
-        "volume_global": 1450,
+        "periode": "Donnees reelles DVF",
+        "volume_global": stats.get("total_ventes", 0),
         "precision_moyenne": 88.5,
         "performances": [
             {"agence": "Aix-en-Provence", "requetes": 507, "taux_erreur": 5.2, "tendance": "+12%"},
@@ -141,26 +150,19 @@ async def get_logs(user: dict = Depends(check_pole(["Direction", "IT et Support"
         ]
     }
 
-try:
-    csv_path = "../data_analysis/data/processed/dvf_clean.csv"
-    if os.path.exists(csv_path):
-        df_dvf = pl.read_csv(csv_path)
-        df_sample = df_dvf.sample(n=2000, seed=42)
-        DVF_DATA = df_sample.to_dicts()
-        logger.info("Donnees DVF chargees en memoire.")
-    else:
-        DVF_DATA = []
-except Exception as e:
-    logger.error(f"Erreur chargement DVF: {e}")
-    DVF_DATA = []
-
 @app.get("/api/transactions")
 async def get_transactions(prix_max: float = 2000000, surface_min: float = 0):
-    filtered = [
-        t for t in DVF_DATA
-        if t["valeur_fonciere"] <= prix_max and t["surface_reelle_bati"] >= surface_min
-    ]
-    return filtered[:300]
+    conn = get_connection()
+    try:
+        query = f"""
+            SELECT * FROM ventes 
+            WHERE valeur_fonciere <= {prix_max} 
+            AND surface_reelle_bati >= {surface_min} 
+            LIMIT 300
+        """
+        return conn.execute(query).df().to_dict(orient='records')
+    finally:
+        conn.close()
 
 @app.get("/api/admin/analysis")
 async def get_analysis(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):

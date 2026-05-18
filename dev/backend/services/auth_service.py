@@ -3,6 +3,11 @@ from argon2.exceptions import VerifyMismatchError
 from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 from typing import Optional
+import os
+import sys
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from database.database import get_user_by_email
 
 SECRET_KEY = "ton_secret_tres_securise"
 ALGORITHM = "HS256"
@@ -21,10 +26,10 @@ class AuthService:
             return False
 
     def authenticate(self, email: str, password: str):
-        mock_hash = "$argon2id$v=19$m=65536,t=3,p=4$dDMMS5OBxxm7qk+aAJYx/Q$PZ/JHKOBd9jHJQZCdQpsghnXhAiJPVaHAsJOUjDWpcI"
+        user_record = get_user_by_email(email)
         
-        if email == "directeur@ymmo.fr" and self.verify_password(password, mock_hash):
-            return {"email": "directeur@ymmo.fr", "pole": "Direction"}
+        if user_record and self.verify_password(password, user_record["password_hash"]):
+            return {"email": user_record["email"], "pole": user_record["pole"]}
         return None
 
     def create_access_token(self, data: dict):
