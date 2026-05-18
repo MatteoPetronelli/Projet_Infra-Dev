@@ -2,9 +2,9 @@
   import { onMount } from 'svelte';
   import Chart from 'chart.js/auto';
 
-  let stats = $state({
+  let stats = $state<{agences: number, transactions: number | string, performance: string}>({
     agences: 12,
-    transactions: 1450,
+    transactions: "...",
     performance: "67% R2"
   });
 
@@ -25,7 +25,7 @@
   let chartInstance: Chart | null = null;
 
   $effect(() => {
-    if (reportData && chartCanvas) {
+    if (reportData && reportData.performances && reportData.performances.length > 0 && chartCanvas) {
       if (chartInstance) chartInstance.destroy();
       
       chartInstance = new Chart(chartCanvas, {
@@ -60,6 +60,18 @@
       });
     }
   });
+
+  async function chargerStatsInitiales() {
+    try {
+      const res = await fetch('http://localhost:8000/api/stats-immobilieres', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        stats.transactions = data.total_ventes || 0;
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
 
   async function chargerAudit() {
     chargementAudit = true;
@@ -197,6 +209,7 @@
 
   onMount(() => {
     chargerAudit();
+    chargerStatsInitiales();
   });
 </script>
 
@@ -209,8 +222,8 @@
     </div>
     <div class="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
       <p class="text-xs font-black text-gray-400 uppercase mb-1">Volume</p>
-      <p class="text-2xl font-black text-gray-900">{stats.transactions} Ventes</p>
-      <p class="text-xs text-blue-500 font-bold mt-2">Base de donnees centralisee</p>
+      <p class="text-2xl font-black text-gray-900">{typeof stats.transactions === 'number' ? stats.transactions.toLocaleString('fr-FR') : stats.transactions} Ventes</p>
+      <p class="text-xs text-blue-500 font-bold mt-2">Base de donnees DuckDB centralisee</p>
     </div>
     <div class="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
       <p class="text-xs font-black text-gray-400 uppercase mb-1">IA Interne</p>
@@ -245,12 +258,12 @@
         <h3 class="font-bold text-blue-400 mb-4 uppercase text-xs tracking-widest">Reporting Strategique</h3>
         <div class="space-y-4">
           <button onclick={genererRapport} class="w-full text-left p-4 rounded-xl bg-white/5 hover:bg-blue-600/50 transition-colors border border-white/5 group">
-            <p class="text-sm font-bold text-white group-hover:text-blue-100">{chargementReport ? 'Extraction...' : (reportData ? 'Masquer le rapport' : 'Rapport consolide des 12 agences')}</p>
-            <p class="text-xs text-gray-500 group-hover:text-blue-200 mt-1">Export et performances mensuelles</p>
+            <p class="text-sm font-bold text-white group-hover:text-blue-100">{chargementReport ? 'Extraction...' : (reportData ? 'Masquer le rapport' : 'Rapport consolide')}</p>
+            <p class="text-xs text-gray-500 group-hover:text-blue-200 mt-1">Export et statistiques de vente globales</p>
           </button>
           <button onclick={chargerAnalyse} class="w-full text-left p-4 rounded-xl bg-white/5 hover:bg-blue-600/50 transition-colors border border-white/5 group">
-            <p class="text-sm font-bold text-white group-hover:text-blue-100">{chargementAnalysis ? 'Analyse...' : (analysisData ? 'Masquer l\'analyse' : 'Analyse des biens populaires')}</p>
-            <p class="text-xs text-gray-500 group-hover:text-blue-200 mt-1">Identification des zones a fort potentiel</p>
+            <p class="text-sm font-bold text-white group-hover:text-blue-100">{chargementAnalysis ? 'Analyse...' : (analysisData ? 'Masquer l\'analyse' : 'Analyse des biens')}</p>
+            <p class="text-xs text-gray-500 group-hover:text-blue-200 mt-1">Identification des tendances de prix</p>
           </button>
         </div>
       </div>
@@ -264,7 +277,7 @@
           </button>
           <button onclick={chargerLogs} class="w-full text-left p-4 rounded-xl bg-white/5 hover:bg-blue-600/50 transition-colors border border-white/5 group">
             <p class="text-sm font-bold text-white group-hover:text-blue-100">{chargementLogs ? 'Lecture...' : (logsData ? 'Masquer les logs' : 'Audit de securite reseau')}</p>
-            <p class="text-xs text-gray-500 group-hover:text-blue-200 mt-1">Journal des connexions VPN et authentifications</p>
+            <p class="text-xs text-gray-500 group-hover:text-blue-200 mt-1">Journal des connexions au portail interne</p>
           </button>
         </div>
       </div>
@@ -276,21 +289,23 @@
           <h4 class="font-bold text-lg text-white mb-2">Analyse Strategique du Marche</h4>
           <p class="text-sm text-blue-300 bg-blue-900/30 p-3 rounded-xl border border-blue-800/50 mb-6">{analysisData.tendances_globales}</p>
           
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {#each analysisData.top_regions as region}
-              <div class="bg-black/30 border border-white/5 p-4 rounded-xl">
-                <p class="font-bold text-white mb-1">{region.ville}</p>
-                <div class="flex justify-between items-center text-xs">
-                  <span class="text-gray-400">Demande:</span>
-                  <span class="font-bold {region.demande === 'Tres Forte' ? 'text-green-400' : 'text-yellow-400'}">{region.demande}</span>
+          {#if analysisData.top_regions && analysisData.top_regions.length > 0}
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {#each analysisData.top_regions as region}
+                <div class="bg-black/30 border border-white/5 p-4 rounded-xl">
+                  <p class="font-bold text-white mb-1">{region.ville}</p>
+                  <div class="flex justify-between items-center text-xs">
+                    <span class="text-gray-400">Demande:</span>
+                    <span class="font-bold {region.demande === 'Tres Forte' ? 'text-green-400' : 'text-yellow-400'}">{region.demande}</span>
+                  </div>
+                  <div class="flex justify-between items-center text-xs mt-2 pt-2 border-t border-white/5">
+                    <span class="text-gray-400">Recherche No 1:</span>
+                    <span class="text-white font-mono">{region.type_populaire}</span>
+                  </div>
                 </div>
-                <div class="flex justify-between items-center text-xs mt-2 pt-2 border-t border-white/5">
-                  <span class="text-gray-400">Recherche No 1:</span>
-                  <span class="text-white font-mono">{region.type_populaire}</span>
-                </div>
-              </div>
-            {/each}
-          </div>
+              {/each}
+            </div>
+          {/if}
         </div>
       </div>
     {/if}
@@ -300,7 +315,7 @@
         <div id="rapport-export" class="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
           <div class="p-6 border-b border-white/10 flex flex-col md:flex-row md:justify-between md:items-center bg-white/5 gap-4">
             <div>
-              <h4 class="font-bold text-lg text-white">Performances du Reseau</h4>
+              <h4 class="font-bold text-lg text-white">Statistiques Globales Base DVF</h4>
               <p class="text-xs text-gray-400 mt-1">Periode : {reportData.periode}</p>
             </div>
             <div class="flex items-center gap-6">
@@ -308,46 +323,48 @@
                 Telecharger PDF
               </button>
               <div class="md:text-right">
-                <p class="text-3xl font-black text-blue-400">{reportData.precision_moyenne}%</p>
-                <p class="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Precision Moyenne IA</p>
+                <p class="text-3xl font-black text-blue-400">{typeof reportData.volume_global === 'number' ? reportData.volume_global.toLocaleString('fr-FR') : reportData.volume_global}</p>
+                <p class="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Transactions Indexees</p>
               </div>
             </div>
           </div>
           
-          <div class="p-6 border-b border-white/10 bg-black/20">
-            <div class="h-64 w-full">
-              <canvas bind:this={chartCanvas}></canvas>
+          {#if reportData.performances && reportData.performances.length > 0}
+            <div class="p-6 border-b border-white/10 bg-black/20">
+              <div class="h-64 w-full">
+                <canvas bind:this={chartCanvas}></canvas>
+              </div>
             </div>
-          </div>
-          
-          <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
-              <thead>
-                <tr class="bg-white/5 text-xs uppercase tracking-widest text-gray-400 border-b border-white/10">
-                  <th class="p-4 font-bold">Agence</th>
-                  <th class="p-4 font-bold text-center">Estimations (Vol.)</th>
-                  <th class="p-4 font-bold text-center">Marge d'erreur</th>
-                  <th class="p-4 font-bold text-right">Activite</th>
-                </tr>
-              </thead>
-              <tbody class="text-sm">
-                {#each reportData.performances as perf}
-                  <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
-                    <td class="p-4 font-bold text-white">{perf.agence}</td>
-                    <td class="p-4 text-gray-300 font-mono text-center">{perf.requetes}</td>
-                    <td class="p-4 text-center">
-                      <span class="px-2 py-1 rounded-md text-xs font-bold {perf.taux_erreur < 7 ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}">
-                        {perf.taux_erreur}%
-                      </span>
-                    </td>
-                    <td class="p-4 font-mono text-xs text-right {perf.tendance.includes('+') ? 'text-green-400' : 'text-red-400'}">
-                      {perf.tendance}
-                    </td>
+            
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="bg-white/5 text-xs uppercase tracking-widest text-gray-400 border-b border-white/10">
+                    <th class="p-4 font-bold">Agence</th>
+                    <th class="p-4 font-bold text-center">Estimations (Vol.)</th>
+                    <th class="p-4 font-bold text-center">Marge d'erreur</th>
+                    <th class="p-4 font-bold text-right">Activite</th>
                   </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody class="text-sm">
+                  {#each reportData.performances as perf}
+                    <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                      <td class="p-4 font-bold text-white">{perf.agence}</td>
+                      <td class="p-4 text-gray-300 font-mono text-center">{perf.requetes}</td>
+                      <td class="p-4 text-center">
+                        <span class="px-2 py-1 rounded-md text-xs font-bold {perf.taux_erreur < 7 ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}">
+                          {perf.taux_erreur}%
+                        </span>
+                      </td>
+                      <td class="p-4 font-mono text-xs text-right {perf.tendance.includes('+') ? 'text-green-400' : 'text-red-400'}">
+                        {perf.tendance}
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          {/if}
         </div>
       </div>
     {/if}
@@ -357,27 +374,31 @@
         <div class="bg-black/40 border border-gray-700 rounded-2xl overflow-hidden p-6 shadow-inner">
           <div class="flex justify-between items-center mb-6">
             <div>
-              <h4 class="font-bold text-lg text-white">Journal d'Evenements</h4>
-              <p class="text-xs text-gray-400 mt-1">Surveillance des acces en temps reel</p>
+              <h4 class="font-bold text-lg text-white">Journal d'Evenements Securise</h4>
+              <p class="text-xs text-gray-400 mt-1">Donnees issues de la table Logs (DuckDB)</p>
             </div>
-            <span class="px-3 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded-full border border-green-500/30">Connecte au SIEM</span>
+            <span class="px-3 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded-full border border-green-500/30">Connecte au Backend</span>
           </div>
           <div class="space-y-3 font-mono text-xs">
-            {#each logsData.logs as log}
-              <div class="flex items-center justify-between p-3 bg-gray-900/80 rounded-lg border border-gray-800 hover:border-gray-600 transition-colors">
-                <div class="flex items-center gap-6">
-                  <span class="text-gray-500">{log.timestamp}</span>
-                  <span class="{log.action === 'LOGIN_FAILED' ? 'text-red-400' : (log.action === 'LOGIN_SUCCESS' ? 'text-green-400' : 'text-blue-400')} font-bold w-32 tracking-wider">
-                    {log.action}
-                  </span>
-                  <span class="text-gray-300 w-48 truncate">{log.user}</span>
+            {#if logsData.logs && logsData.logs.length > 0}
+              {#each logsData.logs as log}
+                <div class="flex items-center justify-between p-3 bg-gray-900/80 rounded-lg border border-gray-800 hover:border-gray-600 transition-colors">
+                  <div class="flex items-center gap-6">
+                    <span class="text-gray-500 w-32">{log.timestamp}</span>
+                    <span class="{log.action === 'LOGIN_FAILED' ? 'text-red-400' : (log.action === 'LOGIN_SUCCESS' ? 'text-green-400' : 'text-blue-400')} font-bold w-32 tracking-wider">
+                      {log.action}
+                    </span>
+                    <span class="text-gray-300 w-48 truncate">{log.user}</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-gray-600">IP:</span>
+                    <span class="text-gray-400 bg-black/50 px-2 py-1 rounded">{log.ip}</span>
+                  </div>
                 </div>
-                <div class="flex items-center gap-2">
-                  <span class="text-gray-600">IP:</span>
-                  <span class="text-gray-400 bg-black/50 px-2 py-1 rounded">{log.ip}</span>
-                </div>
-              </div>
-            {/each}
+              {/each}
+            {:else}
+              <div class="text-center p-4 text-gray-500">Aucun log enregistre pour le moment.</div>
+            {/if}
           </div>
         </div>
       </div>

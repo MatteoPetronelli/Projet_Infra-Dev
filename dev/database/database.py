@@ -31,3 +31,30 @@ def get_user_by_email(email: str):
         return None
     finally:
         conn.close()
+
+def insert_log(utilisateur: str, action: str, ip: str):
+    conn = duckdb.connect(DB_PATH)
+    try:
+        conn.execute("""
+        INSERT INTO logs (utilisateur, action, ip)
+        VALUES (?, ?, ?)
+        """, [utilisateur, action, ip])
+    finally:
+        conn.close()
+
+def get_all_logs():
+    conn = get_connection()
+    try:
+        query = """
+        SELECT 
+            id, 
+            strftime(timestamp, '%Y-%m-%d %H:%M:%S') as timestamp, 
+            utilisateur as user, 
+            action, 
+            ip 
+        FROM logs 
+        ORDER BY id DESC
+        """
+        return conn.execute(query).df().to_dict(orient='records')
+    finally:
+        conn.close()

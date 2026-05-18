@@ -16,7 +16,13 @@
       });
 
       if (res.ok) {
-        window.location.href = '/estimer';
+        const userData = await res.json();
+        
+        if (userData.pole === "Direction" || userData.pole === "IT et Support") {
+          window.location.href = '/admin';
+        } else {
+          window.location.href = '/estimer';
+        }
       } else {
         errorMessage = "Identifiants incorrects";
       }

@@ -8,11 +8,13 @@ from core.logger import logger
 from dependencies import check_pole
 from datetime import datetime
 from typing import List
+from dotenv import load_dotenv
 import os
 import sys
 
+load_dotenv()
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from database.database import get_stats_globales, get_connection
+from database.database import get_stats_globales, get_connection, insert_log, get_all_logs
 
 app = FastAPI(title="Ymmo Analytics API")
 
@@ -32,39 +34,58 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MOCK_BIENS = [
-    {"id": 1, "titre": "Superbe T3 centre-ville", "prix": 250000, "surface": 65, "pieces": 3, "type_bien": "Appartement", "est_vendu": False, "ville": "Aix-en-Provence"},
-    {"id": 2, "titre": "Maison familiale avec jardin", "prix": 450000, "surface": 120, "pieces": 5, "type_bien": "Maison", "est_vendu": False, "ville": "Lyon"},
-    {"id": 3, "titre": "Studio etudiant proche fac", "prix": 110000, "surface": 25, "pieces": 1, "type_bien": "Appartement", "est_vendu": True, "ville": "Marseille"}
-]
-compteur_id = 4
-
-@app.get("/api/biens", response_model=List[Bien])
+@app.get("/api/biens", response_model=List[dict])
 async def get_biens():
-    return MOCK_BIENS
+    conn = get_connection()
+    try:
+        query = """
+            SELECT 
+                id_mutation as id,
+                type_local as type_bien,
+                valeur_fonciere as prix,
+                surface_reelle_bati as surface,
+                nombre_pieces_principales as pieces
+            FROM ventes 
+            WHERE valeur_fonciere IS NOT NULL 
+            LIMIT 50
+        """
+        df = conn.execute(query).df()
+        biens = []
+        for i, row in df.iterrows():
+            biens.append({
+                "id": i,
+                "titre": f"{row.get('type_bien', 'Bien')} - {row.get('surface', 0)}m2",
+                "prix": float(row.get('prix', 0) or 0),
+                "surface": float(row.get('surface', 0) or 0),
+                "pieces": int(row.get('pieces', 1) or 1),
+                "type_bien": str(row.get('type_bien', 'N/A')),
+                "est_vendu": True,
+                "ville": "France"
+            })
+        return biens
+    except Exception as e:
+        logger.error(f"Erreur lecture biens: {e}")
+        return []
+    finally:
+        conn.close()
 
-@app.post("/api/biens", response_model=Bien)
+@app.post("/api/biens")
 async def create_bien(bien: BienCreate):
-    global compteur_id
-    nouveau_bien = bien.model_dump()
-    nouveau_bien["id"] = compteur_id
-    nouveau_bien["est_vendu"] = False
-    MOCK_BIENS.append(nouveau_bien)
-    compteur_id += 1
-    return nouveau_bien
+    return bien.model_dump()
 
 @app.delete("/api/biens/{bien_id}")
 async def delete_bien(bien_id: int):
-    global MOCK_BIENS
-    MOCK_BIENS = [b for b in MOCK_BIENS if b["id"] != bien_id]
-    return {"message": "Bien supprime"}
+    return {"message": "Action non supportee sur la base DVF en lecture seule"}
 
 @app.post("/api/auth/login")
-async def login(credentials: UserLogin, response: Response):
+async def login(credentials: UserLogin, response: Response, request: Request):
     user = auth_service.authenticate(credentials.email, credentials.password)
+    ip = request.client.host if request.client else "127.0.0.1"
     if not user:
+        insert_log(credentials.email, "LOGIN_FAILED", ip)
         raise AuthenticationError()
     
+    insert_log(user["email"], "LOGIN_SUCCESS", ip)
     token = auth_service.create_access_token({"email": user["email"], "pole": user["pole"]})
     
     response.set_cookie(
@@ -92,7 +113,14 @@ async def get_me(request: Request):
     return user
 
 @app.post("/api/auth/logout")
-async def logout(response: Response):
+async def logout(response: Response, request: Request):
+    token = request.cookies.get("access_token")
+    if token:
+        user = auth_service.verify_token(token)
+        if user:
+            ip = request.client.host if request.client else "127.0.0.1"
+            insert_log(user["email"], "LOGOUT", ip)
+            
     response.delete_cookie(
         key="access_token",
         httponly=True,
@@ -129,26 +157,13 @@ async def get_reports(user: dict = Depends(check_pole(["Direction", "IT et Suppo
         "periode": "Donnees reelles DVF",
         "volume_global": stats.get("total_ventes", 0),
         "precision_moyenne": 88.5,
-        "performances": [
-            {"agence": "Aix-en-Provence", "requetes": 507, "taux_erreur": 5.2, "tendance": "+12%"},
-            {"agence": "Lyon Presqu'ile", "requetes": 412, "taux_erreur": 6.1, "tendance": "+5%"},
-            {"agence": "Paris 15", "requetes": 342, "taux_erreur": 7.4, "tendance": "-2%"},
-            {"agence": "Marseille Prado", "requetes": 189, "taux_erreur": 8.9, "tendance": "+1%"}
-        ]
+        "performances": []
     }
 
 @app.get("/api/admin/logs")
 async def get_logs(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
     logger.info(f"Lecture des logs demandee par {user['email']}")
-    return {
-        "logs": [
-            {"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "user": user["email"], "action": "LOGIN_SUCCESS", "ip": "127.0.0.1"},
-            {"timestamp": "2026-04-10 09:12:05", "user": "inconnu", "action": "LOGIN_FAILED", "ip": "192.168.1.45"},
-            {"timestamp": "2026-04-10 08:30:00", "user": "agent.aix@ymmo.fr", "action": "LOGOUT", "ip": "10.0.0.14"},
-            {"timestamp": "2026-04-09 18:15:33", "user": "agent.lyon@ymmo.fr", "action": "LOGIN_SUCCESS", "ip": "10.0.0.22"},
-            {"timestamp": "2026-04-09 18:14:00", "user": "agent.lyon@ymmo.fr", "action": "LOGIN_FAILED", "ip": "10.0.0.22"}
-        ]
-    }
+    return {"logs": get_all_logs()}
 
 @app.get("/api/transactions")
 async def get_transactions(prix_max: float = 2000000, surface_min: float = 0):
@@ -166,15 +181,18 @@ async def get_transactions(prix_max: float = 2000000, surface_min: float = 0):
 
 @app.get("/api/admin/analysis")
 async def get_analysis(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
-    logger.info(f"Analyse des biens populaires demandee par {user['email']}")
-    return {
-        "tendances_globales": "Augmentation de 15% des recherches pour des biens avec exterieur depuis 3 mois.",
-        "top_regions": [
-            {"ville": "Aix-en-Provence", "demande": "Forte", "type_populaire": "Appartement T3"},
-            {"ville": "Lyon Presqu'ile", "demande": "Tres Forte", "type_populaire": "Appartement T2"},
-            {"ville": "Marseille Prado", "demande": "Moyenne", "type_populaire": "Maison avec jardin"}
-        ]
-    }
+    logger.info(f"Analyse demandee par {user['email']}")
+    conn = get_connection()
+    try:
+        query = "SELECT AVG(valeur_fonciere) as avg_prix FROM ventes WHERE valeur_fonciere IS NOT NULL"
+        res = conn.execute(query).fetchone()
+        avg = round(res[0], 2) if res and res[0] else 0
+        return {
+            "tendances_globales": f"Le prix moyen des ventes sur la base DVF est de {avg} euros.",
+            "top_regions": []
+        }
+    finally:
+        conn.close()
 
 @app.post("/api/admin/retrain")
 async def trigger_retrain(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
