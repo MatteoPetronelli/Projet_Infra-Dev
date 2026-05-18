@@ -140,3 +140,9 @@ Thumbs.db
 *.pot
 *.csv
 *.pkl
+
+# =========================
+# Fichiers Db
+# =========================
+*.duckdb
+*.duckdb.wal
