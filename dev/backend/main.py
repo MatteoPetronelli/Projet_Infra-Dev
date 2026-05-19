@@ -19,7 +19,10 @@ from database.database import get_stats_globales, get_connection, insert_log, ge
 app = FastAPI(title="Ymmo Analytics API")
 
 auth_service = AuthService()
-predict_service = PredictService(model_path="../data_analysis/data/processed/modele_ymmo.pkl")
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.abspath(os.path.join(BASE_DIR, "../data_analysis/data/processed/modele_ymmo.pkl"))
+predict_service = PredictService(model_path=MODEL_PATH)
 
 origins = [
     "http://127.0.0.1:5173",
