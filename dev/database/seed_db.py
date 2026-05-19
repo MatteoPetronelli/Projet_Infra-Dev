@@ -2,24 +2,25 @@ import duckdb
 import os
 
 def import_real_data():
-    csv_path = '../data_analysis/data/processed/dvf_clean.csv'
+    parquet_path = '../data_analysis/data/processed/dvf_clean.parquet'
     db_path = 'ymmo_analytics.duckdb'
     
-    if not os.path.exists(csv_path):
-        print(f"Erreur : Le fichier {csv_path} est introuvable.")
+    if not os.path.exists(parquet_path):
+        print(f"Erreur : Le fichier {parquet_path} est introuvable.")
         return
 
     db = duckdb.connect(db_path)
     
     db.execute("DROP TABLE IF EXISTS ventes")
     
+    # Remplacement de read_csv_auto par read_parquet
     db.execute(f"""
         CREATE TABLE ventes AS 
-        SELECT * FROM read_csv_auto('{csv_path}')
+        SELECT * FROM read_parquet('{parquet_path}')
     """)
     
     result = db.execute("SELECT COUNT(*) FROM ventes").fetchone()
-    print(f"Importation terminee : {result[0]} lignes importees depuis le CSV.")
+    print(f"Importation terminee : {result[0]} lignes importees depuis le Parquet avec succès.")
     
     db.close()
 
