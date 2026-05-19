@@ -21,7 +21,23 @@ from database.database import get_stats_globales, get_connection, insert_log, ge
 
 limiter = Limiter(key_func=get_remote_address)
 
-app = FastAPI(title="Ymmo Analytics API")
+tags_metadata = [
+    {"name": "Authentification", "description": "Gestion des accès et de la sécurité via JWT."},
+    {"name": "Catalogue", "description": "Consultation et gestion des biens immobiliers."},
+    {"name": "Intelligence Artificielle", "description": "Prédiction des prix basée sur le modèle XGBoost."},
+    {"name": "Administration", "description": "Statistiques, logs et réentraînement du modèle."}
+]
+
+app = FastAPI(
+    title="Ymmo Analytics API",
+    description="API de qualité entreprise pour l'estimation immobilière et l'analyse de données DVF.",
+    version="1.0.0",
+    contact={
+        "name": "Équipe Dev/Data Ymmo",
+        "email": "contact@ymmo.fr",
+    },
+    openapi_tags=tags_metadata
+)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -45,7 +61,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/api/biens", response_model=List[dict])
+@app.get("/api/biens", response_model=List[dict], tags=["Catalogue"], summary="Lister les biens immobiliers")
 async def get_biens():
     conn = get_connection()
     try:
@@ -80,15 +96,15 @@ async def get_biens():
     finally:
         conn.close()
 
-@app.post("/api/biens")
+@app.post("/api/biens", tags=["Catalogue"], summary="Créer un nouveau bien")
 async def create_bien(bien: BienCreate):
     return bien.model_dump()
 
-@app.delete("/api/biens/{bien_id}")
+@app.delete("/api/biens/{bien_id}", tags=["Catalogue"], summary="Supprimer un bien")
 async def delete_bien(bien_id: int):
     return {"message": "Action non supportee sur la base DVF en lecture seule"}
 
-@app.post("/api/auth/login")
+@app.post("/api/auth/login", tags=["Authentification"], summary="Se connecter et récupérer un JWT")
 @limiter.limit("10/minute")
 async def login(request: Request, credentials: UserLogin, response: Response):
     user = auth_service.authenticate(credentials.email, credentials.password)
@@ -112,7 +128,7 @@ async def login(request: Request, credentials: UserLogin, response: Response):
     
     return user
 
-@app.get("/api/auth/me")
+@app.get("/api/auth/me", tags=["Authentification"], summary="Récupérer le profil connecté")
 async def get_me(request: Request):
     token = request.cookies.get("access_token")
     if not token:
@@ -124,7 +140,7 @@ async def get_me(request: Request):
         
     return user
 
-@app.post("/api/auth/logout")
+@app.post("/api/auth/logout", tags=["Authentification"], summary="Se déconnecter")
 async def logout(response: Response, request: Request):
     token = request.cookies.get("access_token")
     if token:
@@ -142,7 +158,7 @@ async def logout(response: Response, request: Request):
     )
     return {"message": "Logged out"}
 
-@app.post("/api/predict")
+@app.post("/api/predict", tags=["Intelligence Artificielle"], summary="Estimer le prix d'un bien")
 @limiter.limit("5/minute")
 async def predict(request: Request, data: PredictionInput):
     try:
@@ -152,17 +168,17 @@ async def predict(request: Request, data: PredictionInput):
         logger.error(f"Erreur de prediction : {str(e)}")
         raise YmmoException(status_code=500, detail="Erreur interne du modele IA", error_code="ML_MODEL_ERROR")
 
-@app.get("/api/stats-immobilieres")
+@app.get("/api/stats-immobilieres", tags=["Administration"], summary="Récupérer les statistiques globales")
 async def stats_immobilieres():
     data = get_stats_globales()
     return data
 
-@app.get("/api/admin/audit")
+@app.get("/api/admin/audit", tags=["Administration"], summary="Vérifier l'état des systèmes")
 async def get_audit(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
     logger.info(f"Acces audit par {user['email']}")
     return {"status": "all_systems_go", "agences_active": 12}
 
-@app.get("/api/admin/reports")
+@app.get("/api/admin/reports", tags=["Administration"], summary="Générer un rapport de performance")
 async def get_reports(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
     logger.info(f"Generation rapport demandee par {user['email']}")
     stats = get_stats_globales()
@@ -173,12 +189,12 @@ async def get_reports(user: dict = Depends(check_pole(["Direction", "IT et Suppo
         "performances": []
     }
 
-@app.get("/api/admin/logs")
+@app.get("/api/admin/logs", tags=["Administration"], summary="Consulter l'historique de sécurité")
 async def get_logs(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
     logger.info(f"Lecture des logs demandee par {user['email']}")
     return {"logs": get_all_logs()}
 
-@app.get("/api/transactions")
+@app.get("/api/transactions", tags=["Catalogue"], summary="Rechercher des transactions spécifiques")
 async def get_transactions(prix_max: float = 2000000, surface_min: float = 0):
     conn = get_connection()
     try:
@@ -192,7 +208,7 @@ async def get_transactions(prix_max: float = 2000000, surface_min: float = 0):
     finally:
         conn.close()
 
-@app.get("/api/admin/analysis")
+@app.get("/api/admin/analysis", tags=["Administration"], summary="Lancer une analyse des tendances")
 async def get_analysis(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
     logger.info(f"Analyse demandee par {user['email']}")
     conn = get_connection()
@@ -207,7 +223,7 @@ async def get_analysis(user: dict = Depends(check_pole(["Direction", "IT et Supp
     finally:
         conn.close()
 
-@app.post("/api/admin/retrain")
+@app.post("/api/admin/retrain", tags=["Administration"], summary="Déclencher le réentraînement XGBoost")
 @limiter.limit("1/minute")
 async def trigger_retrain(request: Request, user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
     logger.info(f"Re-entrainement du modele IA declenche par {user['email']}")
