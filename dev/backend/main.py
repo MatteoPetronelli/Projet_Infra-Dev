@@ -182,12 +182,38 @@ async def get_audit(user: dict = Depends(check_pole(["Direction", "IT et Support
 async def get_reports(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
     logger.info(f"Generation rapport demandee par {user['email']}")
     stats = get_stats_globales()
-    return {
-        "periode": "Donnees reelles DVF",
-        "volume_global": stats.get("total_ventes", 0),
-        "precision_moyenne": 88.5,
-        "performances": []
-    }
+    conn = get_connection()
+    try:
+        query_perf = """
+            SELECT 
+                type_local || ' ' || nombre_pieces_principales || ' Pièces' as agence,
+                COUNT(*) as requetes,
+                ROUND(AVG(valeur_fonciere / NULLIF(surface_reelle_bati, 0)), 0) as prix_m2
+            FROM ventes
+            WHERE type_local IS NOT NULL AND nombre_pieces_principales > 0
+            GROUP BY type_local, nombre_pieces_principales
+            ORDER BY requetes DESC
+            LIMIT 5
+        """
+        df_perf = conn.execute(query_perf).df()
+        
+        performances = []
+        for _, row in df_perf.iterrows():
+            performances.append({
+                "agence": str(row['agence']),
+                "requetes": int(row['requetes']),
+                "taux_erreur": 0,
+                "tendance": f"{int(row['prix_m2'])} €/m²"
+            })
+
+        return {
+            "periode": "Donnees reelles DVF",
+            "volume_global": stats.get("total_ventes", 0),
+            "precision_moyenne": 88.5,
+            "performances": performances
+        }
+    finally:
+        conn.close()
 
 @app.get("/api/admin/logs", tags=["Administration"], summary="Consulter l'historique de sécurité")
 async def get_logs(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
@@ -213,12 +239,33 @@ async def get_analysis(user: dict = Depends(check_pole(["Direction", "IT et Supp
     logger.info(f"Analyse demandee par {user['email']}")
     conn = get_connection()
     try:
-        query = "SELECT AVG(valeur_fonciere) as avg_prix FROM ventes WHERE valeur_fonciere IS NOT NULL"
-        res = conn.execute(query).fetchone()
+        query_avg = "SELECT AVG(valeur_fonciere) as avg_prix FROM ventes WHERE valeur_fonciere IS NOT NULL"
+        res = conn.execute(query_avg).fetchone()
         avg = round(res[0], 2) if res and res[0] else 0
+        
+        query_top = """
+            SELECT 
+                type_local || 's' as ville,
+                'Forte' as demande,
+                COUNT(*) as volume
+            FROM ventes
+            WHERE type_local IS NOT NULL
+            GROUP BY type_local
+            ORDER BY volume DESC
+            LIMIT 3
+        """
+        df_top = conn.execute(query_top).df()
+        top_regions = []
+        for _, row in df_top.iterrows():
+            top_regions.append({
+                "ville": str(row['ville']),
+                "demande": str(row['demande']),
+                "type_populaire": f"Vol: {int(row['volume'])}"
+            })
+
         return {
             "tendances_globales": f"Le prix moyen des ventes sur la base DVF est de {avg} euros.",
-            "top_regions": []
+            "top_regions": top_regions
         }
     finally:
         conn.close()
