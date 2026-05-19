@@ -11,11 +11,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    # Mise à jour vers la v4 (utilise le moteur Node.js récent)
     - name: Récupération du code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
+    # Mise à jour vers la v5
     - name: Configuration de Python 3.11
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v5
       with:
         python-version: "3.11"
 
@@ -27,10 +29,8 @@ jobs:
 
     - name: Linting avec flake8 (Vérification de la propreté du code)
       run: |
-        # Arrête le pipeline s'il y a des erreurs de syntaxe fatales
         flake8 dev/backend --count --select=E9,F63,F7,F82 --show-source --statistics
 
     - name: Tests unitaires avec pytest
       run: |
-        # Lance les tests Python configurés dans le backend
         PYTHONPATH=dev/backend pytest dev/backend/
