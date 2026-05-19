@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from schemas import PredictionInput, UserLogin, Bien, BienCreate
+from schemas import PredictionInput, UserLogin, Bien, BienCreate, UserCreate
 from services.predict_service import PredictService
 from services.auth_service import AuthService
 from exceptions import AuthenticationError, ForbiddenError, YmmoException
@@ -103,6 +103,17 @@ async def create_bien(bien: BienCreate):
 @app.delete("/api/biens/{bien_id}", tags=["Catalogue"], summary="Supprimer un bien")
 async def delete_bien(bien_id: int):
     return {"message": "Action non supportee sur la base DVF en lecture seule"}
+
+@app.post("/api/auth/register", tags=["Authentification"], summary="Créer un nouveau compte")
+@limiter.limit("5/minute")
+async def register(request: Request, user_data: UserCreate):
+    try:
+        new_user = auth_service.register_user(user_data.email, user_data.password, user_data.pole)
+        ip = request.client.host if request.client else "127.0.0.1"
+        insert_log(new_user["email"], "REGISTER_SUCCESS", ip)
+        return {"message": "Compte créé avec succès", "user": new_user}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/auth/login", tags=["Authentification"], summary="Se connecter et récupérer un JWT")
 @limiter.limit("10/minute")
@@ -280,3 +291,21 @@ async def trigger_retrain(request: Request, user: dict = Depends(check_pole(["Di
         "details": "Integration des nouvelles donnees DVF en cours. Duree estimee : 4 minutes.",
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
+
+@app.get("/api/admin/users", tags=["Administration"], summary="Lister les utilisateurs")
+async def get_users(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
+    conn = get_connection()
+    try:
+        users = conn.execute("SELECT email, pole FROM utilisateurs").df().to_dict(orient='records')
+        return users
+    finally:
+        conn.close()
+
+@app.put("/api/admin/users/role", tags=["Administration"], summary="Modifier le rôle d'un utilisateur")
+async def update_user_role(data: dict, user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE utilisateurs SET pole = ? WHERE email = ?", [data['pole'], data['email']])
+        return {"message": "Rôle mis à jour"}
+    finally:
+        conn.close()

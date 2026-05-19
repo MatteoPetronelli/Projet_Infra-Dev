@@ -51,3 +51,13 @@ def get_all_logs():
         return conn.execute(query).df().to_dict(orient='records')
     finally:
         conn.close()
+
+def insert_user(email: str, hashed_password: str, pole: str):
+    conn = duckdb.connect(DB_PATH)
+    try:
+        conn.execute("""
+        INSERT INTO utilisateurs (email, password_hash, pole)
+        VALUES (?, ?, ?)
+        """, [email, hashed_password, pole])
+    finally:
+        conn.close()

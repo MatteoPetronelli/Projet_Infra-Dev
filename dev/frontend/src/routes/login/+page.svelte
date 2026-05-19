@@ -1,50 +1,66 @@
 <script lang="ts">
-  let loginEmail = $state("");
-  let loginPassword = $state("");
-  let errorMessage = $state("");
+  let email = $state("");
+  let password = $state("");
+  let passwordConfirm = $state("");
+  let isRegistering = $state(false);
+  let feedbackMessage = $state({ text: "", type: "" });
 
-  async function handleLogin(e: SubmitEvent) {
+  async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
-    errorMessage = "";
+
+    if (isRegistering && password !== passwordConfirm) {
+      feedbackMessage = { text: "Les mots de passe ne correspondent pas", type: "error" };
+      return;
+    }
+
+    feedbackMessage = { text: "Traitement...", type: "info" };
     
+    const endpoint = isRegistering ? 'http://localhost:8000/api/auth/register' : 'http://localhost:8000/api/auth/login';
+    const payload = isRegistering ? { email, password } : { email, password };
+
     try {
-      const res = await fetch('http://localhost:8000/api/auth/login', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email: loginEmail, password: loginPassword })
+        body: JSON.stringify(payload)
       });
 
       if (res.ok) {
-        const userData = await res.json();
-        
-        if (userData.pole === "Direction" || userData.pole === "IT et Support") {
-          window.location.href = '/admin';
+        if (isRegistering) {
+          feedbackMessage = { text: "Compte créé ! Un administrateur devra valider vos accès.", type: "success" };
+          isRegistering = false;
         } else {
-          window.location.href = '/estimer';
+          const userData = await res.json();
+          window.location.href = (userData.pole === "Direction" || userData.pole === "IT et Support") ? '/admin' : '/estimer';
         }
       } else {
-        errorMessage = "Identifiants incorrects";
+        const error = await res.json();
+        feedbackMessage = { text: error.detail || "Erreur lors de l'opération", type: "error" };
       }
     } catch (err) {
-      errorMessage = "Erreur de connexion au serveur";
+      feedbackMessage = { text: "Serveur indisponible", type: "error" };
     }
   }
 </script>
 
-<div class="max-w-md mx-auto bg-white p-10 rounded-3xl shadow-xl border border-gray-100 mt-20">
-  <h2 class="text-2xl font-bold mb-2 text-center">Acces Agence</h2>
-  <p class="text-gray-400 text-center text-sm mb-8">Veuillez vous identifier pour acceder aux outils</p>
+<div class="max-w-md mx-auto bg-white p-10 rounded-3xl shadow-xl border border-gray-100 mt-20 animate-pop">
+  <h2 class="text-2xl font-black mb-2 text-center">{isRegistering ? "Créer un compte" : "Accès Agence"}</h2>
   
-  {#if errorMessage}
-    <div class="mb-4 p-3 bg-red-50 text-red-600 text-sm font-bold rounded-xl text-center">
-      {errorMessage}
+  {#if feedbackMessage.text}
+    <div class="mb-4 p-3 text-sm font-bold rounded-xl text-center {feedbackMessage.type === 'error' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}">
+      {feedbackMessage.text}
     </div>
   {/if}
 
-  <form onsubmit={handleLogin} class="space-y-4">
-    <input type="email" name="email" bind:value={loginEmail} placeholder="Email professionnel" autocomplete="username" class="w-full bg-gray-50 border-none rounded-xl py-4 px-4 focus:ring-2 focus:ring-blue-500 transition" required />
-    <input type="password" name="password" bind:value={loginPassword} placeholder="Mot de passe" autocomplete="current-password" class="w-full bg-gray-50 border-none rounded-xl py-4 px-4 focus:ring-2 focus:ring-blue-500 transition" required />
-    <button type="submit" class="w-full bg-blue-600 text-white py-4 rounded-2xl hover:bg-blue-700 transition-all font-bold shadow-lg shadow-blue-100">S'authentifier</button>
+  <form onsubmit={handleSubmit} class="space-y-4">
+    <input type="email" bind:value={email} placeholder="Email professionnel" class="w-full bg-gray-50 border-none rounded-xl py-4 px-4" required />
+    <input type="password" bind:value={password} placeholder="Mot de passe" class="w-full bg-gray-50 border-none rounded-xl py-4 px-4" required />
+    {#if isRegistering}
+      <input type="password" bind:value={passwordConfirm} placeholder="Confirmer mot de passe" class="w-full bg-gray-50 p-4 rounded-xl" required />
+    {/if}
+    <button type="submit" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-black">{isRegistering ? "S'inscrire" : "S'authentifier"}</button>
   </form>
+
+  <button onclick={() => isRegistering = !isRegistering} class="w-full mt-4 text-xs font-bold text-gray-400 underline">{isRegistering ? "Déjà un compte ? Connexion" : "Pas de compte ? S'inscrire"}</button>
 </div>

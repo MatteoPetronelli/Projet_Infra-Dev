@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { slide } from 'svelte/transition';
   import Chart from 'chart.js/auto';
 
   let stats = $state<{agences: number, transactions: number | string, performance: string}>({
@@ -7,6 +8,9 @@
     transactions: "...",
     performance: "67% R2"
   });
+
+  let usersList = $state<any[]>([]);
+  let feedback = $state({ message: '', type: 'success' });
 
   let auditData = $state<any>(null);
   let reportData = $state<any>(null);
@@ -160,7 +164,6 @@
     const element = document.getElementById('rapport-export');
     if (!element) return;
 
-    // On cache les boutons d'action avant de prendre la photo
     const actionArea = document.getElementById('pdf-actions');
     if (actionArea) actionArea.style.display = 'none';
     
@@ -170,7 +173,6 @@
       const htmlToImage = await import('html-to-image');
       const { jsPDF } = await import('jspdf');
 
-      // On capture l'élément original directement (sans le cloner pour ne pas casser le canvas)
       const dataUrl = await htmlToImage.toPng(element, { 
         quality: 0.98, 
         backgroundColor: '#111827',
@@ -188,15 +190,41 @@
     } catch (error) {
       console.error(error);
     } finally {
-      // On restaure les boutons
       if (actionArea) actionArea.style.display = 'flex';
       telechargementEnCours = false;
     }
   }
 
+  async function chargerUtilisateurs() {
+    try {
+      const res = await fetch('http://localhost:8000/api/admin/users', { credentials: 'include' });
+      if (res.ok) usersList = await res.json();
+    } catch (err) {
+      console.error("Erreur chargement utilisateurs:", err);
+    }
+  }
+
+  async function saveRole(user: any) {
+    const res = await fetch('http://localhost:8000/api/admin/users/role', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: user.email, pole: user.pole })
+    });
+
+    if (res.ok) {
+      feedback = { message: "Rôle mis à jour avec succès", type: 'success' };
+    } else if (res.status === 401) {
+      feedback = { message: "Erreur 401 : Non autorisé. Vérifiez vos droits.", type: 'error' };
+    } else {
+      feedback = { message: "Erreur lors de la mise à jour", type: 'error' };
+    }
+    setTimeout(() => feedback.message = '', 3000);
+  }
+
   onMount(() => {
     chargerAudit();
     chargerStatsInitiales();
+    chargerUtilisateurs();
   });
 </script>
 
@@ -324,6 +352,56 @@
             <svg class="w-5 h-5 text-gray-600 group-hover:text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
           </button>
         </div>
+      </div>
+    </div>
+
+    <div class="bg-gray-50 p-8 rounded-3xl border border-gray-200 mt-8 shadow-inner">
+      {#if feedback.message}
+        <div 
+          transition:slide={{ duration: 300 }} 
+          class="mb-6 px-6 py-3 rounded-xl font-bold shadow-sm flex items-center justify-between border 
+          {feedback.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}"
+        >
+          <span>{feedback.message}</span>
+          <button onclick={() => feedback.message = ''} class="opacity-50 hover:opacity-100 font-black">&times;</button>
+        </div>
+      {/if}
+      <h3 class="font-black text-gray-800 mb-6 flex items-center gap-2">
+        <span class="w-2 h-6 bg-blue-600 rounded-full"></span> 
+        Gestion des Accès
+      </h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left bg-white rounded-2xl overflow-hidden shadow-sm">
+          <thead>
+            <tr class="text-xs uppercase text-gray-400 border-b border-gray-100">
+              <th class="p-4">Email</th>
+              <th class="p-4">Rôle</th>
+              <th class="p-4">Action</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            {#each usersList as u}
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="p-4 text-sm font-medium text-gray-900">{u.email}</td>
+                <td class="p-4">
+                  <select bind:value={u.pole} class="bg-gray-100 text-sm p-2 rounded-lg text-gray-700 font-bold border-none focus:ring-2 focus:ring-blue-500">
+                    <option value="Utilisateur">Utilisateur</option>
+                    <option value="Direction">Direction</option>
+                    <option value="IT et Support">IT et Support</option>
+                  </select>
+                </td>
+                <td class="p-4">
+                  <button 
+                    onclick={async () => await saveRole(u)} 
+                    class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-4 py-2 rounded-xl transition"
+                  >
+                    Sauvegarder
+                  </button>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
       </div>
     </div>
 

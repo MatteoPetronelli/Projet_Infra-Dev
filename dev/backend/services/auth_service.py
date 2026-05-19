@@ -10,7 +10,7 @@ import sys
 load_dotenv()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from database.database import get_user_by_email
+from database.database import get_user_by_email, insert_user
 
 SECRET_KEY = os.getenv("SECRET_KEY", "fallback_secret_key_for_dev")
 ALGORITHM = "HS256"
@@ -46,3 +46,12 @@ class AuthService:
             return payload
         except JWTError:
             return None
+    
+    def register_user(self, email: str, password: str, pole: str = "Utilisateur"):
+        existing_user = get_user_by_email(email)
+        if existing_user:
+            raise ValueError("Cet email est déjà utilisé.")
+            
+        hashed_password = self.hash_password(password)
+        insert_user(email, hashed_password, pole)
+        return {"email": email, "pole": pole}

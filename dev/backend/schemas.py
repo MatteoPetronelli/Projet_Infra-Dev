@@ -57,3 +57,18 @@ class BienCreate(BaseModel):
 class Bien(BienCreate):
     id: int
     est_vendu: bool = False
+
+class UserCreate(BaseModel):
+    email: EmailStr = Field(..., description="L'adresse email de l'utilisateur")
+    password: str = Field(..., min_length=8, description="Le mot de passe (min 8 caractères)")
+    pole: str = Field(default="Utilisateur", description="Le pôle de rattachement")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "email": "agent@ymmo.fr",
+                "password": "securepassword123",
+                "pole": "Ventes"
+            }
+        }
+    }
