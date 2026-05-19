@@ -1,0 +1,21 @@
+services:
+  backend:
+    build: 
+      context: ./dev/backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./dev/database:/app/database
+      - ./dev/data_analysis:/app/data_analysis
+    environment:
+      - SECRET_KEY=un_secret_tres_long_et_aleatoire_pour_ton_projet_ymmo_2026
+
+  frontend:
+    build:
+      context: ./dev/frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - backend
