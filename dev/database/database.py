@@ -9,14 +9,7 @@ def get_connection():
 def get_stats_globales():
     conn = get_connection()
     try:
-        query = """
-            SELECT 
-                COUNT(*) as total_ventes,
-                AVG(valeur_fonciere) as prix_moyen,
-                AVG(valeur_fonciere / NULLIF(surface_reelle_bati, 0)) as prix_m2_moyen
-            FROM ventes
-            WHERE surface_reelle_bati > 0
-        """
+        query = "SELECT * FROM stats_globales_cache"
         return conn.execute(query).df().to_dict(orient='records')[0]
     finally:
         conn.close()

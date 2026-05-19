@@ -13,7 +13,6 @@ def import_real_data():
     
     db.execute("DROP TABLE IF EXISTS ventes")
     
-    # Remplacement de read_csv_auto par read_parquet
     db.execute(f"""
         CREATE TABLE ventes AS 
         SELECT * FROM read_parquet('{parquet_path}')
@@ -21,6 +20,19 @@ def import_real_data():
     
     result = db.execute("SELECT COUNT(*) FROM ventes").fetchone()
     print(f"Importation terminee : {result[0]} lignes importees depuis le Parquet avec succès.")
+
+    print("Création de la table de cache des statistiques globales...")
+    db.execute("DROP TABLE IF EXISTS stats_globales_cache")
+    db.execute("""
+        CREATE TABLE stats_globales_cache AS 
+        SELECT 
+            COUNT(*) as total_ventes,
+            AVG(valeur_fonciere) as prix_moyen,
+            AVG(valeur_fonciere / NULLIF(surface_reelle_bati, 0)) as prix_m2_moyen
+        FROM ventes
+        WHERE surface_reelle_bati > 0
+    """)
+    print("Mise en cache terminée avec succès.")
     
     db.close()
 
