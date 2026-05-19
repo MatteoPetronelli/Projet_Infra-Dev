@@ -1,5 +1,8 @@
 from fastapi import FastAPI, Depends, Response, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from schemas import PredictionInput, UserLogin, Bien, BienCreate
 from services.predict_service import PredictService
 from services.auth_service import AuthService
@@ -16,7 +19,12 @@ load_dotenv()
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from database.database import get_stats_globales, get_connection, insert_log, get_all_logs
 
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(title="Ymmo Analytics API")
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 auth_service = AuthService()
 
@@ -81,7 +89,8 @@ async def delete_bien(bien_id: int):
     return {"message": "Action non supportee sur la base DVF en lecture seule"}
 
 @app.post("/api/auth/login")
-async def login(credentials: UserLogin, response: Response, request: Request):
+@limiter.limit("10/minute")
+async def login(request: Request, credentials: UserLogin, response: Response):
     user = auth_service.authenticate(credentials.email, credentials.password)
     ip = request.client.host if request.client else "127.0.0.1"
     if not user:
@@ -134,7 +143,8 @@ async def logout(response: Response, request: Request):
     return {"message": "Logged out"}
 
 @app.post("/api/predict")
-async def predict(data: PredictionInput):
+@limiter.limit("5/minute")
+async def predict(request: Request, data: PredictionInput):
     try:
         result = predict_service.get_prediction(data.model_dump())
         return {"prix_estime": result}
@@ -198,7 +208,8 @@ async def get_analysis(user: dict = Depends(check_pole(["Direction", "IT et Supp
         conn.close()
 
 @app.post("/api/admin/retrain")
-async def trigger_retrain(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
+@limiter.limit("1/minute")
+async def trigger_retrain(request: Request, user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
     logger.info(f"Re-entrainement du modele IA declenche par {user['email']}")
     return {
         "status": "success",
