@@ -4,7 +4,7 @@ import os
 DB_PATH = os.path.join(os.path.dirname(__file__), '../database/ymmo_analytics.duckdb')
 
 def get_connection():
-    return duckdb.connect(DB_PATH, read_only=True)
+    return duckdb.connect(DB_PATH, read_only=False)
 
 def get_stats_globales():
     conn = get_connection()

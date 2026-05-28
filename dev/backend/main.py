@@ -302,10 +302,59 @@ async def get_users(user: dict = Depends(check_pole(["Direction", "IT et Support
         conn.close()
 
 @app.put("/api/admin/users/role", tags=["Administration"], summary="Modifier le rôle d'un utilisateur")
-async def update_user_role(data: dict, user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
+async def update_user_role(data: dict, current_user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
+    target_email = data.get('email')
+    new_pole = data.get('pole')
+
+    if target_email == current_user["email"]:
+        raise HTTPException(
+            status_code=403, 
+            detail="Opération interdite : Vous ne pouvez pas modifier ou rétrograder votre propre compte."
+        )
+
     conn = get_connection()
     try:
-        conn.execute("UPDATE utilisateurs SET pole = ? WHERE email = ?", [data['pole'], data['email']])
+        res = conn.execute("SELECT pole FROM utilisateurs WHERE email = ?", [target_email]).fetchone()
+        if not res:
+            raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+        
+        target_current_pole = res[0]
+
+        if current_user["pole"] == "IT et Support":
+            if target_current_pole in ["Direction", "IT et Support"]:
+                raise HTTPException(status_code=403, detail="Droits insuffisants : L'IT ne peut modifier que les comptes 'Utilisateur'.")
+            
+            if new_pole == "Direction":
+                raise HTTPException(status_code=403, detail="Élévation interdite : Seule la Direction peut nommer un nouveau membre de la Direction.")
+
+        conn.execute("UPDATE utilisateurs SET pole = ? WHERE email = ?", [new_pole, target_email])
         return {"message": "Rôle mis à jour"}
+    finally:
+        conn.close()
+
+@app.delete("/api/admin/users/{target_email}", tags=["Administration"], summary="Supprimer définitivement un utilisateur")
+async def delete_user(target_email: str, current_user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
+    if target_email == current_user["email"]:
+        raise HTTPException(
+            status_code=400, 
+            detail="Opération interdite : Impossible de supprimer votre propre compte."
+        )
+    
+    conn = get_connection()
+    try:
+        res = conn.execute("SELECT pole FROM utilisateurs WHERE email = ?", [target_email]).fetchone()
+        if not res:
+            raise HTTPException(status_code=404, detail="Utilisateur non trouvé.")
+        
+        target_pole = res[0]
+        
+        if current_user["pole"] == "IT et Support" and target_pole in ["Direction", "IT et Support"]:
+            raise HTTPException(
+                status_code=403, 
+                detail="Droits insuffisants : Les membres IT ne peuvent supprimer que les comptes de type Utilisateur."
+            )
+            
+        conn.execute("DELETE FROM utilisateurs WHERE email = ?", [target_email])
+        return {"message": "Utilisateur révoqué et supprimé avec succès."}
     finally:
         conn.close()

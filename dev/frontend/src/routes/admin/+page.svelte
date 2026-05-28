@@ -11,6 +11,8 @@
 
   let usersList = $state<any[]>([]);
   let feedback = $state({ message: '', type: 'success' });
+  let currentAdmin = $state<{ email: string; pole: string } | null>(null);
+  let idASupprimer = $state<string | null>(null);
 
   let auditData = $state<any>(null);
   let reportData = $state<any>(null);
@@ -195,36 +197,89 @@
     }
   }
 
-  async function chargerUtilisateurs() {
+  async function saveRole(u: any) {
+    if (u.pole === u.initialPole) {
+      feedback = { message: "Aucune modification à sauvegarder.", type: 'success' };
+      setTimeout(() => feedback.message = '', 3000);
+      return;
+    }
+
     try {
-      const res = await fetch('http://localhost:8000/api/admin/users', { credentials: 'include' });
-      if (res.ok) usersList = await res.json();
+      const res = await fetch('http://localhost:8000/api/admin/users/role', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: u.email, pole: u.pole })
+      });
+
+      if (res.ok) {
+        u.initialPole = u.pole; 
+        feedback = { message: `Privilèges de ${u.email} mis à jour.`, type: 'success' };
+      } else {
+        const err = await res.json();
+        u.pole = u.initialPole; 
+        feedback = { message: err.detail || "Action refusée", type: 'error' };
+      }
+    } catch (error) {
+      u.pole = u.initialPole;
+      feedback = { message: "Erreur de communication avec le serveur", type: 'error' };
+    }
+    
+    setTimeout(() => feedback.message = '', 4000);
+  }
+
+  async function chargerDonneesInitiales() {
+    try {
+      const authRes = await fetch('http://localhost:8000/api/auth/me', { credentials: 'include' });
+      if (authRes.ok) currentAdmin = await authRes.json();
+
+      const usersRes = await fetch('http://localhost:8000/api/admin/users', { credentials: 'include' });
+      if (usersRes.ok) {
+        const rawUsers = await usersRes.json();
+        usersList = rawUsers.map((u: any) => ({ ...u, initialPole: u.pole }));
+      }
     } catch (err) {
-      console.error("Erreur chargement utilisateurs:", err);
+      console.error("Erreur d'initialisation", err);
     }
   }
 
-  async function saveRole(user: any) {
-    const res = await fetch('http://localhost:8000/api/admin/users/role', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: user.email, pole: user.pole })
-    });
+  function peutSupprimer(targetUser: any): boolean {
+    if (!currentAdmin) return false;
+    if (currentAdmin.email === targetUser.email) return false;
 
-    if (res.ok) {
-      feedback = { message: "Rôle mis à jour avec succès", type: 'success' };
-    } else if (res.status === 401) {
-      feedback = { message: "Erreur 401 : Non autorisé. Vérifiez vos droits.", type: 'error' };
-    } else {
-      feedback = { message: "Erreur lors de la mise à jour", type: 'error' };
+    const roleValide = targetUser.initialPole || targetUser.pole;
+
+    if (currentAdmin.pole === "Direction") return true;
+    if (currentAdmin.pole === "IT et Support" && roleValide === "Utilisateur") return true;
+    
+    return false;
+  }
+
+  async function supprimerUtilisateur(targetEmail: string) {
+    try {
+      const res = await fetch(`http://localhost:8000/api/admin/users/${targetEmail}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (res.ok) {
+        usersList = usersList.filter(u => u.email !== targetEmail);
+        feedback = { message: "Compte utilisateur supprimé avec succès.", type: 'success' };
+      } else {
+        const err = await res.json();
+        feedback = { message: err.detail || "Erreur lors de la suppression.", type: 'error' };
+      }
+    } catch (error) {
+      feedback = { message: "Serveur indisponible.", type: 'error' };
     }
+    idASupprimer = null;
     setTimeout(() => feedback.message = '', 3000);
   }
 
   onMount(() => {
     chargerAudit();
     chargerStatsInitiales();
-    chargerUtilisateurs();
+    chargerDonneesInitiales();
   });
 </script>
 
@@ -363,40 +418,51 @@
           {feedback.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}"
         >
           <span>{feedback.message}</span>
-          <button onclick={() => feedback.message = ''} class="opacity-50 hover:opacity-100 font-black">&times;</button>
+          <button onclick={() => feedback.message = ''} aria-label="Fermer" class="opacity-50 hover:opacity-100 font-black">&times;</button>
         </div>
       {/if}
+
       <h3 class="font-black text-gray-800 mb-6 flex items-center gap-2">
         <span class="w-2 h-6 bg-blue-600 rounded-full"></span> 
         Gestion des Accès
       </h3>
+      
       <div class="overflow-x-auto">
         <table class="w-full text-left bg-white rounded-2xl overflow-hidden shadow-sm">
           <thead>
-            <tr class="text-xs uppercase text-gray-400 border-b border-gray-100">
-              <th class="p-4">Email</th>
-              <th class="p-4">Rôle</th>
-              <th class="p-4">Action</th>
+            <tr class="text-xs uppercase text-gray-400 border-b border-gray-100 bg-gray-50/50">
+              <th class="p-4">Email de l'agent</th>
+              <th class="p-4">Pôle assigné</th>
+              <th class="p-4 text-right">Actions de sécurité</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-50">
             {#each usersList as u}
-              <tr class="hover:bg-gray-50 transition-colors">
+              <tr class="hover:bg-gray-50/80 transition-colors">
                 <td class="p-4 text-sm font-medium text-gray-900">{u.email}</td>
                 <td class="p-4">
-                  <select bind:value={u.pole} class="bg-gray-100 text-sm p-2 rounded-lg text-gray-700 font-bold border-none focus:ring-2 focus:ring-blue-500">
+                  <select bind:value={u.pole} class="bg-gray-100 text-sm p-2 rounded-lg text-gray-700 font-bold border-none focus:ring-2 focus:ring-blue-500 outline-none">
                     <option value="Utilisateur">Utilisateur</option>
                     <option value="Direction">Direction</option>
                     <option value="IT et Support">IT et Support</option>
                   </select>
                 </td>
-                <td class="p-4">
+                <td class="p-4 flex gap-2 justify-end">
                   <button 
                     onclick={async () => await saveRole(u)} 
                     class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-4 py-2 rounded-xl transition"
                   >
-                    Sauvegarder
+                    Mettre à jour
                   </button>
+                  
+                  {#if peutSupprimer(u)}
+                    <button 
+                      onclick={() => idASupprimer = u.email} 
+                      class="bg-red-600 hover:bg-red-700 text-white text-xs font-black px-4 py-2 rounded-xl transition"
+                    >
+                      Révoquer
+                    </button>
+                  {/if}
                 </td>
               </tr>
             {/each}
@@ -404,6 +470,22 @@
         </table>
       </div>
     </div>
+
+    {#if idASupprimer !== null}
+      <div class="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-pop">
+        <div class="bg-white p-8 rounded-3xl text-center shadow-2xl max-w-sm w-full border border-gray-100">
+          <div class="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-black">!</div>
+          <h3 class="font-black text-xl text-gray-900 mb-2">Confirmer la révocation</h3>
+          <p class="text-gray-500 text-sm mb-6 leading-relaxed">
+            Voulez-vous vraiment supprimer l'accès réseau de <span class="font-bold text-gray-900">{idASupprimer}</span> ? Cette action est définitive.
+          </p>
+          <div class="flex gap-3 justify-center">
+            <button onclick={() => idASupprimer = null} class="px-5 py-2.5 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition">Annuler</button>
+            <button onclick={async () => await supprimerUtilisateur(idASupprimer as string)} class="bg-red-600 text-white px-5 py-2.5 rounded-xl font-black hover:bg-red-700 transition shadow-lg shadow-red-200">Confirmer</button>
+          </div>
+        </div>
+      </div>
+    {/if}
 
     {#if analysisData}
       <div class="mt-8 animate-pop">

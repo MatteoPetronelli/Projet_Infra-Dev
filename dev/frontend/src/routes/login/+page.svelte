@@ -28,7 +28,7 @@
 
       if (res.ok) {
         if (isRegistering) {
-          feedbackMessage = { text: "Compte créé ! Un administrateur devra valider vos accès.", type: "success" };
+          feedbackMessage = { text: "Compte créé ! Vous pouvez vous connecter.", type: "success" };
           isRegistering = false;
         } else {
           const userData = await res.json();
@@ -36,7 +36,18 @@
         }
       } else {
         const error = await res.json();
-        feedbackMessage = { text: error.detail || "Erreur lors de l'opération", type: "error" };
+        let errorMessage = "Erreur lors de l'opération";
+
+        if (typeof error.detail === 'string') {
+          errorMessage = error.detail;
+        }
+        else if (Array.isArray(error.detail)) {
+          errorMessage = error.detail[0].msg.includes('8 characters') 
+            ? "Le mot de passe doit contenir au moins 8 caractères." 
+            : "Veuillez vérifier les champs saisis.";
+        }
+
+        feedbackMessage = { text: errorMessage, type: "error" };
       }
     } catch (err) {
       feedbackMessage = { text: "Serveur indisponible", type: "error" };
