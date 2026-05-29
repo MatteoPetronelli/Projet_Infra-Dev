@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, Response, Request, HTTPException
+from fastapi import FastAPI, Depends, Response, Request, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -9,11 +9,15 @@ from services.auth_service import AuthService
 from exceptions import AuthenticationError, ForbiddenError, YmmoException
 from core.logger import logger
 from dependencies import check_pole
-from datetime import datetime
+from datetime import datetime, date
+from pydantic import BaseModel
 from typing import List
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
+import subprocess
 import os
 import sys
+
 
 load_dotenv()
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -28,6 +32,23 @@ tags_metadata = [
     {"name": "Administration", "description": "Statistiques, logs et réentraînement du modèle."}
 ]
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db_path = os.path.join(BASE_DIR, '../database/ymmo_analytics.duckdb')
+    db_dir = os.path.abspath(os.path.join(BASE_DIR, '../database'))
+    
+    if not os.path.exists(db_path):
+        logger.info("Base de données introuvable. Génération automatique en cours...")
+        try:
+            subprocess.run([sys.executable, 'init_log_db.py'], cwd=db_dir, check=True)
+            subprocess.run([sys.executable, 'seed_db.py'], cwd=db_dir, check=True)
+            subprocess.run([sys.executable, 'seed_users.py'], cwd=db_dir, check=True)
+            logger.info("Base de données générée et remplie avec succès !")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Erreur critique lors de la génération de la BDD : {e}")
+            
+    yield
+
 app = FastAPI(
     title="Ymmo Analytics API",
     description="API de qualité entreprise pour l'estimation immobilière et l'analyse de données DVF.",
@@ -36,7 +57,8 @@ app = FastAPI(
         "name": "Équipe Dev/Data Ymmo",
         "email": "contact@ymmo.fr",
     },
-    openapi_tags=tags_metadata
+    openapi_tags=tags_metadata,
+    lifespan=lifespan
 )
 
 app.state.limiter = limiter
@@ -61,35 +83,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/api/biens", response_model=List[dict], tags=["Catalogue"], summary="Lister les biens immobiliers")
+@app.get("/api/biens", tags=["Catalogue"], summary="Lister les biens immobiliers de l'agence")
 async def get_biens():
     conn = get_connection()
     try:
         query = """
             SELECT 
-                id_mutation as id,
-                type_local as type_bien,
-                valeur_fonciere as prix,
-                surface_reelle_bati as surface,
-                nombre_pieces_principales as pieces
-            FROM ventes 
-            WHERE valeur_fonciere IS NOT NULL 
-            LIMIT 50
+                id,
+                titre,
+                prix_estime as prix,
+                surface,
+                pieces,
+                type_bien,
+                ville,
+                est_vendu,
+                prix_vente_final,
+                date_vente
+            FROM biens
+            ORDER BY id DESC
         """
-        df = conn.execute(query).df()
-        biens = []
-        for i, row in df.iterrows():
-            biens.append({
-                "id": i,
-                "titre": f"{row.get('type_bien', 'Bien')} - {row.get('surface', 0)}m2",
-                "prix": float(row.get('prix', 0) or 0),
-                "surface": float(row.get('surface', 0) or 0),
-                "pieces": int(row.get('pieces', 1) or 1),
-                "type_bien": str(row.get('type_bien', 'N/A')),
-                "est_vendu": True,
-                "ville": "France"
-            })
-        return biens
+        return conn.execute(query).df().to_dict(orient='records')
     except Exception as e:
         logger.error(f"Erreur lecture biens: {e}")
         return []
@@ -97,12 +110,79 @@ async def get_biens():
         conn.close()
 
 @app.post("/api/biens", tags=["Catalogue"], summary="Créer un nouveau bien")
-async def create_bien(bien: BienCreate):
-    return bien.model_dump()
+async def create_bien(bien_data: dict, current_user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
+    conn = get_connection()
+    try:
+        res = conn.execute("""
+            INSERT INTO biens (titre, prix_estime, surface, pieces, type_bien, ville, est_vendu)
+            VALUES (?, ?, ?, ?, ?, ?, FALSE)
+            RETURNING id, titre, prix_estime, surface, pieces, type_bien, ville, est_vendu
+        """, [
+            bien_data.get('titre', 'Sans titre'), 
+            bien_data.get('prix', 0), 
+            bien_data.get('surface', 0), 
+            bien_data.get('pieces', 1), 
+            bien_data.get('type_bien', 'Appartement'), 
+            bien_data.get('ville', 'Inconnue')
+        ]).fetchone()
+        
+        return {
+            "id": res[0],
+            "titre": res[1],
+            "prix": res[2],
+            "surface": res[3],
+            "pieces": res[4],
+            "type_bien": res[5],
+            "ville": res[6],
+            "est_vendu": res[7]
+        }
+    finally:
+        conn.close()
 
 @app.delete("/api/biens/{bien_id}", tags=["Catalogue"], summary="Supprimer un bien")
-async def delete_bien(bien_id: int):
-    return {"message": "Action non supportee sur la base DVF en lecture seule"}
+async def delete_bien(bien_id: int, current_user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM biens WHERE id = ?", [bien_id])
+        return {"message": "Bien supprimé du catalogue"}
+    finally:
+        conn.close()
+
+class VenteBien(BaseModel):
+    prix_vente_final: float
+
+@app.post("/api/biens/{bien_id}/vendre", tags=["Catalogue"], summary="Conclure la vente d'un bien")
+async def vendre_bien(
+    bien_id: int, 
+    vente_data: VenteBien, 
+    current_user: dict = Depends(check_pole(["Direction", "IT et Support"]))
+):
+    conn = get_connection()
+    try:
+        res = conn.execute("SELECT est_vendu, titre FROM biens WHERE id = ?", [bien_id]).fetchone()
+        
+        if not res:
+            raise HTTPException(status_code=404, detail="Bien introuvable.")
+        if res[0]:
+            raise HTTPException(status_code=400, detail="Ce bien a déjà été marqué comme vendu.")
+        
+        today = date.today().isoformat()
+        
+        conn.execute("""
+            UPDATE biens 
+            SET est_vendu = TRUE, 
+                prix_vente_final = ?, 
+                date_vente = ? 
+            WHERE id = ?
+        """, [vente_data.prix_vente_final, today, bien_id])
+        
+        return {
+            "message": f"La vente a été actée.",
+            "prix_final": vente_data.prix_vente_final,
+            "date": today
+        }
+    finally:
+        conn.close()
 
 @app.post("/api/auth/register", tags=["Authentification"], summary="Créer un nouveau compte")
 @limiter.limit("5/minute")
@@ -192,35 +272,48 @@ async def get_audit(user: dict = Depends(check_pole(["Direction", "IT et Support
 @app.get("/api/admin/reports", tags=["Administration"], summary="Générer un rapport de performance")
 async def get_reports(user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
     logger.info(f"Generation rapport demandee par {user['email']}")
-    stats = get_stats_globales()
     conn = get_connection()
     try:
-        query_perf = """
+        res_dvf = conn.execute("SELECT COUNT(*) FROM ventes").fetchone()
+        volume_dvf = res_dvf[0] if res_dvf else 0
+
+        query_agence = """
             SELECT 
-                type_local || ' ' || nombre_pieces_principales || ' Pièces' as agence,
+                type_bien || ' (' || pieces || ' pièces)' as agence,
                 COUNT(*) as requetes,
-                ROUND(AVG(valeur_fonciere / NULLIF(surface_reelle_bati, 0)), 0) as prix_m2
-            FROM ventes
-            WHERE type_local IS NOT NULL AND nombre_pieces_principales > 0
-            GROUP BY type_local, nombre_pieces_principales
+                AVG(prix_vente_final) as prix_moyen,
+                AVG(ABS(prix_vente_final - prix_estime) / NULLIF(prix_estime, 0)) * 100 as taux_erreur
+            FROM biens
+            WHERE est_vendu = TRUE
+            GROUP BY type_bien, pieces
             ORDER BY requetes DESC
             LIMIT 5
         """
-        df_perf = conn.execute(query_perf).df()
+        df_agence = conn.execute(query_agence).df()
         
         performances = []
-        for _, row in df_perf.iterrows():
+        for _, row in df_agence.iterrows():
+            err = row['taux_erreur']
+            taux_erreur = round(float(err), 1) if err == err and err is not None else 0.0
+            prix = row['prix_moyen']
+            prix_format = f"{int(prix):,} €".replace(',', ' ') if prix == prix and prix is not None else "0 €"
+            
             performances.append({
                 "agence": str(row['agence']),
                 "requetes": int(row['requetes']),
-                "taux_erreur": 0,
-                "tendance": f"{int(row['prix_m2'])} €/m²"
+                "taux_erreur": taux_erreur,
+                "tendance": prix_format
             })
 
+        query_precision = "SELECT AVG(ABS(prix_vente_final - prix_estime) / NULLIF(prix_estime, 0)) * 100 FROM biens WHERE est_vendu = TRUE AND prix_estime > 0"
+        res_prec = conn.execute(query_precision).fetchone()
+        erreur_globale = res_prec[0] if res_prec and res_prec[0] else 11.5
+        precision_moyenne = round(100 - erreur_globale, 1)
+
         return {
-            "periode": "Donnees reelles DVF",
-            "volume_global": stats.get("total_ventes", 0),
-            "precision_moyenne": 88.5,
+            "periode": "DVF + Ventes Agence",
+            "volume_global": volume_dvf,
+            "precision_moyenne": precision_moyenne,
             "performances": performances
         }
     finally:
@@ -250,18 +343,17 @@ async def get_analysis(user: dict = Depends(check_pole(["Direction", "IT et Supp
     logger.info(f"Analyse demandee par {user['email']}")
     conn = get_connection()
     try:
-        query_avg = "SELECT AVG(valeur_fonciere) as avg_prix FROM ventes WHERE valeur_fonciere IS NOT NULL"
-        res = conn.execute(query_avg).fetchone()
-        avg = round(res[0], 2) if res and res[0] else 0
-        
+        res_ca = conn.execute("SELECT SUM(prix_vente_final), COUNT(*) FROM biens WHERE est_vendu = TRUE").fetchone()
+        ca_total = res_ca[0] if res_ca and res_ca[0] else 0
+        ventes_total = res_ca[1] if res_ca and res_ca[1] else 0
+
         query_top = """
             SELECT 
-                type_local || 's' as ville,
-                'Forte' as demande,
+                ville,
                 COUNT(*) as volume
-            FROM ventes
-            WHERE type_local IS NOT NULL
-            GROUP BY type_local
+            FROM biens
+            WHERE est_vendu = TRUE
+            GROUP BY ville
             ORDER BY volume DESC
             LIMIT 3
         """
@@ -270,25 +362,44 @@ async def get_analysis(user: dict = Depends(check_pole(["Direction", "IT et Supp
         for _, row in df_top.iterrows():
             top_regions.append({
                 "ville": str(row['ville']),
-                "demande": str(row['demande']),
-                "type_populaire": f"Vol: {int(row['volume'])}"
+                "demande": "Très Forte",
+                "type_populaire": f"Ventes: {int(row['volume'])}"
             })
 
+        if ventes_total == 0:
+            tendance_text = "En attente de la première transaction pour générer l'analyse financière."
+        else:
+            ca_str = f"{int(ca_total):,} €".replace(',', ' ')
+            tendance_text = f"L'agence a généré un Chiffre d'Affaires total de {ca_str} sur {ventes_total} transactions conclues."
+
         return {
-            "tendances_globales": f"Le prix moyen des ventes sur la base DVF est de {avg} euros.",
+            "tendances_globales": tendance_text,
             "top_regions": top_regions
         }
     finally:
         conn.close()
 
+def lancer_script_ia():
+    try:
+        script_path = os.path.abspath(os.path.join(BASE_DIR, '../data_analysis/train_model.py'))
+        cwd_dir = os.path.abspath(os.path.join(BASE_DIR, '../data_analysis'))
+        logger.info("Début du ré-entraînement de l'IA XGBoost en arrière-plan...")
+        subprocess.run([sys.executable, script_path], cwd=cwd_dir, check=True)
+        logger.info("Ré-entraînement terminé avec succès !")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Erreur lors du ré-entraînement : {e}")
+
 @app.post("/api/admin/retrain", tags=["Administration"], summary="Déclencher le réentraînement XGBoost")
 @limiter.limit("1/minute")
-async def trigger_retrain(request: Request, user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
+async def trigger_retrain(request: Request, background_tasks: BackgroundTasks, user: dict = Depends(check_pole(["Direction", "IT et Support"]))):
     logger.info(f"Re-entrainement du modele IA declenche par {user['email']}")
+    
+    background_tasks.add_task(lancer_script_ia)
+    
     return {
         "status": "success",
-        "message": "Processus d'apprentissage XGBoost demarre.",
-        "details": "Integration des nouvelles donnees DVF en cours. Duree estimee : 4 minutes.",
+        "message": "Processus d'apprentissage XGBoost démarré.",
+        "details": "L'IA analyse actuellement les nouvelles données. Le modèle sera mis à jour en arrière-plan.",
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
 
@@ -322,10 +433,10 @@ async def update_user_role(data: dict, current_user: dict = Depends(check_pole([
 
         if current_user["pole"] == "IT et Support":
             if target_current_pole in ["Direction", "IT et Support"]:
-                raise HTTPException(status_code=403, detail="Droits insuffisants : L'IT ne peut modifier que les comptes 'Utilisateur'.")
+                raise HTTPException(status_code=403, detail="Droits insuffisants.")
             
-            if new_pole == "Direction":
-                raise HTTPException(status_code=403, detail="Élévation interdite : Seule la Direction peut nommer un nouveau membre de la Direction.")
+            if new_pole in ["Direction", "IT et Support"]:
+                raise HTTPException(status_code=403, detail="Élévation interdite.")
 
         conn.execute("UPDATE utilisateurs SET pole = ? WHERE email = ?", [new_pole, target_email])
         return {"message": "Rôle mis à jour"}

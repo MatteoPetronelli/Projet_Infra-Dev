@@ -1,6 +1,6 @@
 from fastapi import Request, HTTPException, Depends
 from services.auth_service import AuthService
-from database.database import get_user_by_email  # <-- Ajoute cet import en haut
+from database.database import get_user_by_email
 
 auth_service = AuthService()
 

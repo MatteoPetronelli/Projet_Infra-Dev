@@ -440,26 +440,33 @@
             {#each usersList as u}
               <tr class="hover:bg-gray-50/80 transition-colors">
                 <td class="p-4 text-sm font-medium text-gray-900">{u.email}</td>
+                
                 <td class="p-4">
-                  <select bind:value={u.pole} class="bg-gray-100 text-sm p-2 rounded-lg text-gray-700 font-bold border-none focus:ring-2 focus:ring-blue-500 outline-none">
-                    <option value="Utilisateur">Utilisateur</option>
-                    <option value="Direction">Direction</option>
-                    <option value="IT et Support">IT et Support</option>
-                  </select>
+                  {#if currentAdmin?.pole === 'Direction'}
+                    <select bind:value={u.pole} class="bg-gray-100 text-sm p-2 rounded-lg text-gray-700 font-bold border-none focus:ring-2 focus:ring-blue-500 outline-none">
+                      <option value="Utilisateur">Utilisateur</option>
+                      <option value="Direction">Direction</option>
+                      <option value="IT et Support">IT et Support</option>
+                    </select>
+                  {:else}
+                    <span class="px-3 py-1 text-xs font-bold rounded-full border 
+                      {u.initialPole === 'Direction' ? 'bg-purple-50 text-purple-700 border-purple-200' : 
+                      u.initialPole === 'IT et Support' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
+                      'bg-gray-100 text-gray-700 border-gray-200'}">
+                      {u.initialPole}
+                    </span>
+                  {/if}
                 </td>
+
                 <td class="p-4 flex gap-2 justify-end">
-                  <button 
-                    onclick={async () => await saveRole(u)} 
-                    class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-4 py-2 rounded-xl transition"
-                  >
-                    Mettre à jour
-                  </button>
+                  {#if currentAdmin?.pole === 'Direction'}
+                    <button onclick={async () => await saveRole(u)} class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-4 py-2 rounded-xl transition">
+                      Mettre à jour
+                    </button>
+                  {/if}
                   
                   {#if peutSupprimer(u)}
-                    <button 
-                      onclick={() => idASupprimer = u.email} 
-                      class="bg-red-600 hover:bg-red-700 text-white text-xs font-black px-4 py-2 rounded-xl transition"
-                    >
+                    <button onclick={() => idASupprimer = u.email} class="bg-red-600 hover:bg-red-700 text-white text-xs font-black px-4 py-2 rounded-xl transition">
                       Révoquer
                     </button>
                   {/if}

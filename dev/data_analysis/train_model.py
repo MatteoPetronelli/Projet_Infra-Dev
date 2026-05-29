@@ -1,41 +1,62 @@
-import polars as pl
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_absolute_error, r2_score
-import joblib
+import duckdb
+import pandas as pd
+import xgboost as xgb
+import pickle
+import os
 
-df = pl.read_csv("data/processed/dvf_clean.csv")
+DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '../database/ymmo_analytics.duckdb'))
+MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), 'data/processed/modele_ymmo.pkl'))
 
-df = df.filter(
-    (pl.col("valeur_fonciere") >= 20000) &
-    (pl.col("valeur_fonciere") <= 2000000) &
-    (pl.col("surface_reelle_bati") >= 9) &
-    (pl.col("surface_reelle_bati") <= 500) &
-    (pl.col("nombre_pieces_principales") <= 20)
-)
+def train_model():
+    conn = duckdb.connect(DB_PATH, read_only=True)
+    
+    df_dvf = conn.execute("""
+        SELECT 
+            valeur_fonciere as prix,
+            surface_reelle_bati as surface,
+            nombre_pieces_principales as pieces,
+            type_local as type_bien
+        FROM ventes
+        WHERE valeur_fonciere > 0 
+        AND surface_reelle_bati > 0 
+        AND nombre_pieces_principales > 0
+        AND type_local IN ('Appartement', 'Maison')
+    """).df()
+    
+    df_agence = conn.execute("""
+        SELECT 
+            prix_vente_final as prix,
+            surface,
+            pieces,
+            type_bien
+        FROM biens
+        WHERE est_vendu = TRUE 
+        AND prix_vente_final > 0
+        AND type_bien IN ('Appartement', 'Maison')
+    """).df()
+    
+    conn.close()
+    
+    df_combined = pd.concat([df_dvf, df_agence], ignore_index=True)
+    
+    df_encoded = pd.get_dummies(df_combined, columns=['type_bien'])
+    
+    expected_cols = ['surface', 'pieces', 'type_bien_Appartement', 'type_bien_Maison']
+    for col in expected_cols:
+        if col not in df_encoded.columns:
+            df_encoded[col] = False
+            
+    df_encoded = df_encoded[['prix'] + expected_cols]
+    
+    X = df_encoded.drop('prix', axis=1)
+    y = df_encoded['prix']
+    
+    model = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=42)
+    model.fit(X, y)
+    
+    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+    with open(MODEL_PATH, 'wb') as f:
+        pickle.dump(model, f)
 
-df = df.with_columns(
-    (pl.col("type_local") == "Maison").cast(pl.Int32).alias("est_maison")
-)
-
-X = df.select(["surface_reelle_bati", "nombre_pieces_principales", "longitude", "latitude", "est_maison"]).to_numpy()
-y = df.select("valeur_fonciere").to_numpy().ravel()
-
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-modele = RandomForestRegressor(
-    n_estimators=100, 
-    max_depth=15, 
-    min_samples_leaf=5, 
-    random_state=42, 
-    n_jobs=-1
-)
-modele.fit(X_train, y_train)
-
-y_pred = modele.predict(X_test)
-mae = mean_absolute_error(y_test, y_pred)
-r2 = r2_score(y_test, y_pred)
-
-print(f"MAE: {mae:,.2f} EUR", f"R2: {r2:.4f}")
-
-joblib.dump(modele, "data/processed/modele_ymmo.pkl")
+if __name__ == "__main__":
+    train_model()

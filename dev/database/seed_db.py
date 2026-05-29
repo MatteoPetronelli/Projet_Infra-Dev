@@ -19,9 +19,8 @@ def import_real_data():
     """)
     
     result = db.execute("SELECT COUNT(*) FROM ventes").fetchone()
-    print(f"Importation terminee : {result[0]} lignes importees depuis le Parquet avec succès.")
+    print(f"Importation terminee : {result[0]} lignes importees depuis le Parquet.")
 
-    print("Création de la table de cache des statistiques globales...")
     db.execute("DROP TABLE IF EXISTS stats_globales_cache")
     db.execute("""
         CREATE TABLE stats_globales_cache AS 
@@ -32,8 +31,24 @@ def import_real_data():
         FROM ventes
         WHERE surface_reelle_bati > 0
     """)
-    print("Mise en cache terminée avec succès.")
     
+    db.execute("""
+        CREATE SEQUENCE IF NOT EXISTS seq_biens_id;
+        
+        CREATE TABLE IF NOT EXISTS biens (
+            id INTEGER DEFAULT nextval('seq_biens_id') PRIMARY KEY,
+            titre VARCHAR,
+            prix_estime FLOAT,
+            surface FLOAT,
+            pieces INTEGER,
+            type_bien VARCHAR,
+            ville VARCHAR,
+            est_vendu BOOLEAN DEFAULT FALSE,
+            prix_vente_final FLOAT,
+            date_vente DATE
+        );
+    """)
+
     db.close()
 
 if __name__ == "__main__":
