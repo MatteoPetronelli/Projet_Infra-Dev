@@ -75,6 +75,10 @@ predict_service = PredictService(model_path=MODEL_PATH)
 origins = [
     "http://127.0.0.1:5173",
     "http://localhost:5173",
+    "http://localhost",
+    "http://127.0.0.1",
+    "http://localhost:80",
+    "http://127.0.0.1:80"
 ]
 
 app.add_middleware(

@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./dev/frontend
+      dockerfile: Dockerfile.prod
+    ports:
+      - "80:3000"
+    environment:
+      - NODE_ENV=production
+      - ORIGIN=http://localhost
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./dev
+      dockerfile: backend/Dockerfile.prod
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ymmo_data:/app/database
+    restart: unless-stopped
+
+volumes:
+  ymmo_data:
