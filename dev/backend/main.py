@@ -44,6 +44,7 @@ async def lifespan(app: FastAPI):
             subprocess.run([sys.executable, 'init_log_db.py'], cwd=db_dir, check=True)
             subprocess.run([sys.executable, 'seed_db.py'], cwd=db_dir, check=True)
             subprocess.run([sys.executable, 'seed_users.py'], cwd=db_dir, check=True)
+            subprocess.run([sys.executable, 'seed_biens.py'], cwd=db_dir, check=True)
             logger.info("Base de données générée et remplie avec succès !")
         except subprocess.CalledProcessError as e:
             logger.error(f"Erreur critique lors de la génération de la BDD : {e}")

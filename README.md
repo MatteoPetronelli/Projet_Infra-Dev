@@ -121,6 +121,7 @@ projet_infra-dev/
 │   │   ├── init_log_db.py
 │   │   ├── seed_db.py
 │   │   ├── seed_users.py
+│   │   ├── seed_biens.py
 │   │   └── ymmo_analytics.duckdb
 │   │
 │   └── data_analysis/
