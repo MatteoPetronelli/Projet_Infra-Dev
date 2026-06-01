@@ -105,7 +105,7 @@ async def get_biens():
         """
         df = conn.execute(query).df()
         
-        df = df.where(pd.notna(df), None)
+        df = df.astype(object).where(pd.notna(df), None)
         
         return df.to_dict(orient='records')
     except Exception as e:
