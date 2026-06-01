@@ -1,0 +1,13 @@
+**/.venv/
+**/venv/
+**/node_modules/
+**/.svelte-kit/
+**/build/
+**/*.duckdb
+**/*.duckdb.wal
+**/__pycache__/
+**/*.pyc
+**/*.pytest_cache/
+.git/
+**/*.csv
+**/*.parquet
