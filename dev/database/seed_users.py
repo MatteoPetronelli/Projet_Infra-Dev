@@ -17,15 +17,19 @@ def seed_users():
     );
     """)
     
-    db.execute("""
-    INSERT INTO utilisateurs (email, password_hash, pole)
-    VALUES (
-        'directeur@ymmo.fr',
-        '$argon2id$v=19$m=65536,t=3,p=4$dDMMS5OBxxm7qk+aAJYx/Q$PZ/JHKOBd9jHJQZCdQpsghnXhAiJPVaHAsJOUjDWpcI',
-        'Direction'
-    ) ON CONFLICT DO NOTHING;
-    """)
+    users_to_seed = [
+        ('directeur@ymmo.fr', '$argon2id$v=19$m=65536,t=3,p=4$dDMMS5OBxxm7qk+aAJYx/Q$PZ/JHKOBd9jHJQZCdQpsghnXhAiJPVaHAsJOUjDWpcI', 'Direction'),
+        ('it@ymmo.fr', '$argon2id$v=19$m=65536,t=3,p=4$5RhnjYUJsTPU+ueAgd3UPQ$1ZxPWxA7QyIuqMhQZiGe0PJfGPlGWbmPAfBxIRgPD7M', 'IT et Support'),
+        ('user@gmail.com', '$argon2id$v=19$m=65536,t=3,p=4$ey+x13qMjN7XkFfBI3MDlA$xV3ugCWlMHWYMaXdrv+Dsmhsc5a3xMzEMMZxBSOPxVc', 'Utilisateur')
+    ]
     
+    for email, password_hash, pole in users_to_seed:
+        db.execute("""
+        INSERT INTO utilisateurs (email, password_hash, pole)
+        VALUES (?, ?, ?)
+        ON CONFLICT (email) DO NOTHING;
+        """, [email, password_hash, pole])
+        
     db.close()
 
 if __name__ == "__main__":
