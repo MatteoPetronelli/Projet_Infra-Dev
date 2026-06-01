@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from typing import List
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
+import pandas as pd
 import subprocess
 import os
 import sys
@@ -102,7 +103,11 @@ async def get_biens():
             FROM biens
             ORDER BY id DESC
         """
-        return conn.execute(query).df().to_dict(orient='records')
+        df = conn.execute(query).df()
+        
+        df = df.where(pd.notna(df), None)
+        
+        return df.to_dict(orient='records')
     except Exception as e:
         logger.error(f"Erreur lecture biens: {e}")
         return []
