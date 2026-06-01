@@ -86,8 +86,12 @@ projet_infra-dev/
 ├── dev/
 │   ├── backend/
 │   │   ├── main.py
+│   │   ├── test_main.py
+│   │   ├── exceptions.py
 │   │   ├── dependencies.py
 │   │   ├── schemas.py
+│   │   ├── core/
+│   │   │   └── logger.py
 │   │   ├── services/
 │   │   │   ├── auth_service.py
 │   │   │   └── predict_service.py
@@ -96,20 +100,42 @@ projet_infra-dev/
 │   ├── frontend/
 │   │   ├── src/
 │   │   │   ├── routes/
+│   │   │   │   ├── +layout.svelte
+│   │   │   │   ├── +page.svelte
+│   │   │   │   ├── layout.css
+│   │   │   │   ├── admin/
+│   │   │   │   │   └── +page.svelte
+│   │   │   │   ├── catalogue/
+│   │   │   │   │   └── +page.svelte
+│   │   │   │   ├── estimer/
+│   │   │   │   │   └── +page.svelte
+│   │   │   │   └── login/
+│   │   │   │       └── +page.svelte
 │   │   │   └── app.html
 │   │   ├── static/
+│   │   │   └── carte_prix_immobiliers.html
 │   │   └── Dockerfile
 │   │
 │   ├── database/
 │   │   ├── database.py
+│   │   ├── init_log_db.py
 │   │   ├── seed_db.py
-│   │   └── seed_users.py
+│   │   ├── seed_users.py
+│   │   └── ymmo_analytics.duckdb
 │   │
 │   └── data_analysis/
 │       ├── import_dvf.py
 │       ├── clean_dvf.py
+│       ├── generate_plots.py
 │       ├── convert_to_parquet.py
-│       └── train_model.py
+│       ├── train_model.py
+│       ├── data/
+│           ├── raw/
+│           │   └── valeursfoncieres-2025.csv
+│           └── processed/
+│               ├── dvf_clean.parquet
+│               └── modele_ymmo.pkl
+
 ```
 
 ---

@@ -1,12 +1,16 @@
 import pytest
 import os
 import duckdb
-import pandas as pd
 from fastapi.testclient import TestClient
 from main import app
 import database.database as db_module
+from dependencies import get_current_user
 
 TEST_DB_PATH = os.path.join(os.path.dirname(__file__), "test_ymmo_analytics.duckdb")
+
+# ==========================================
+# CONFIGURATION & INITIALIZATION (FIXTURE)
+# ==========================================
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_database():
@@ -43,19 +47,44 @@ def setup_test_database():
     conn.execute("""
         CREATE TABLE utilisateurs (
             email VARCHAR,
-            password VARCHAR,
+            password_hash VARCHAR,
             pole VARCHAR
         )
     """)
     conn.execute("""
         INSERT INTO utilisateurs VALUES 
-        ('directeur@ymmo.fr', '$argon2id$v=19$m=65536,t=3,p=4$OEV6S005...', 'Direction')
+        ('directeur@ymmo.fr', 'hashed_pwd', 'Direction'),
+        ('it@ymmo.fr', 'hashed_pwd', 'IT et Support'),
+        ('user@ymmo.fr', 'hashed_pwd', 'Utilisateur')
+    """)
+    
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS seq_biens_id")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS biens (
+            id INTEGER DEFAULT nextval('seq_biens_id') PRIMARY KEY,
+            titre VARCHAR,
+            prix_estime FLOAT,
+            surface FLOAT,
+            pieces INTEGER,
+            type_bien VARCHAR,
+            ville VARCHAR,
+            est_vendu BOOLEAN DEFAULT FALSE,
+            prix_vente_final FLOAT,
+            date_vente DATE
+        )
+    """)
+    conn.execute("""
+        INSERT INTO biens (titre, prix_estime, surface, pieces, type_bien, ville, est_vendu, prix_vente_final, date_vente)
+        VALUES 
+        ('Appartement Ancien', 200000.0, 60.0, 3, 'Appartement', 'Paris', FALSE, NULL, NULL),
+        ('Maison Vendue', 350000.0, 100.0, 4, 'Maison', 'Lyon', TRUE, 340000.0, '2026-05-01')
     """)
     
     conn.execute("""
-        CREATE TABLE logs (
-            id INTEGER,
-            timestamp TIMESTAMP DEFAULT NOW(),
+        CREATE SEQUENCE IF NOT EXISTS seq_logs_id;
+        CREATE TABLE IF NOT EXISTS logs (
+            id INTEGER DEFAULT nextval('seq_logs_id') PRIMARY KEY,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             utilisateur VARCHAR,
             action VARCHAR,
             ip VARCHAR
@@ -68,64 +97,109 @@ def setup_test_database():
         os.remove(TEST_DB_PATH)
 
 # ==========================================
-# TEST CATALOGUE
+# CATALOG TESTS (PROPERTIES & SALES)
 # ==========================================
 
-def test_get_biens_retourne_liste():
-    client = TestClient(app)
-    response = client.get("/api/biens")
-    assert response.status_code == 200
-    assert isinstance(response.json(), list)
-    assert len(response.json()) > 0
+def test_get_properties_returns_list():
+    with TestClient(app) as client:
+        response = client.get("/api/biens")
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+        assert len(response.json()) >= 2
 
-def test_creation_nouveau_bien():
-    client = TestClient(app)
-    nouveau_bien = {
-        "titre": "Appartement Test Unitaire",
-        "prix": 150000.0,
-        "surface": 45.0,
-        "pieces": 2,
-        "type_bien": "Appartement",
-        "ville": "Nantes"
-    }
-    response = client.post("/api/biens", json=nouveau_bien)
-    assert response.status_code == 200
-    data = response.json()
-    assert data["titre"] == "Appartement Test Unitaire"
+def test_create_new_property():
+    app.dependency_overrides[get_current_user] = lambda: {"email": "directeur@ymmo.fr", "pole": "Direction"}
+    with TestClient(app) as client:
+        new_property = {
+            "titre": "Appartement Test Unitaire",
+            "prix": 150000.0,
+            "surface": 45.0,
+            "pieces": 2,
+            "type_bien": "Appartement",
+            "ville": "Nantes"
+        }
+        response = client.post("/api/biens", json=new_property)
+        assert response.status_code == 200
+        assert response.json()["titre"] == "Appartement Test Unitaire"
+        assert response.json()["id"] is not None
+    app.dependency_overrides.clear()
+
+def test_sell_property():
+    app.dependency_overrides[get_current_user] = lambda: {"email": "directeur@ymmo.fr", "pole": "Direction"}
+    with TestClient(app) as client:
+        response = client.post("/api/biens/1/vendre", json={"prix_vente_final": 195000.0})
+        assert response.status_code == 200
+        assert response.json()["prix_final"] == 195000.0
+    app.dependency_overrides.clear()
+
+def test_sell_already_sold_property():
+    app.dependency_overrides[get_current_user] = lambda: {"email": "directeur@ymmo.fr", "pole": "Direction"}
+    with TestClient(app) as client:
+        response = client.post("/api/biens/2/vendre", json={"prix_vente_final": 340000.0})
+        assert response.status_code == 400
+    app.dependency_overrides.clear()
 
 # ==========================================
-# TEST AUTHENTIFICATION
+# DASHBOARD TESTS (REPORTING & ANALYTICS)
 # ==========================================
 
-def test_route_protegee_sans_cookie():
-    client = TestClient(app)
-    client.cookies.clear()
-    response = client.get("/api/auth/me")
-    assert response.status_code == 401
+def test_admin_reports():
+    app.dependency_overrides[get_current_user] = lambda: {"email": "directeur@ymmo.fr", "pole": "Direction"}
+    with TestClient(app) as client:
+        response = client.get("/api/admin/reports")
+        assert response.status_code == 200
+        data = response.json()
+        assert "performances" in data
+        assert "volume_global" in data
+    app.dependency_overrides.clear()
 
-def test_acces_admin_sans_droits():
-    client = TestClient(app)
-    client.cookies.clear()
-    response = client.get("/api/admin/reports")
-    assert response.status_code == 401
+def test_admin_analysis():
+    app.dependency_overrides[get_current_user] = lambda: {"email": "directeur@ymmo.fr", "pole": "Direction"}
+    with TestClient(app) as client:
+        response = client.get("/api/admin/analysis")
+        assert response.status_code == 200
+        assert "tendances_globales" in response.json()
+    app.dependency_overrides.clear()
 
 # ==========================================
-# TEST CYBERSECURITE (RATE LIMITING)
+# SECURITY & RBAC TESTS (ACCESS RIGHTS)
 # ==========================================
 
-def test_rate_limiting_predict_bloque_les_requetes_excessives():
-    client = TestClient(app)
-    payload = {
-        "surface_reelle_bati": 80,
-        "nombre_pieces_principales": 4,
-        "longitude": 5.9072,
-        "latitude": 46.1709,
-        "est_maison": 1
-    }
-    
-    status_codes = []
-    for _ in range(10):
-        response = client.post("/api/predict", json=payload)
-        status_codes.append(response.status_code)
-        
-    assert 429 in status_codes
+def test_it_cannot_promote_to_direction():
+    app.dependency_overrides[get_current_user] = lambda: {"email": "it@ymmo.fr", "pole": "IT et Support"}
+    with TestClient(app) as client:
+        response = client.put("/api/admin/users/role", json={"email": "user@ymmo.fr", "pole": "Direction"})
+        assert response.status_code == 403
+    app.dependency_overrides.clear()
+
+def test_protected_route_without_cookie():
+    with TestClient(app) as client:
+        client.cookies.clear()
+        response = client.get("/api/auth/me")
+        assert response.status_code == 401
+
+def test_admin_access_without_rights():
+    with TestClient(app) as client:
+        client.cookies.clear()
+        response = client.get("/api/admin/reports")
+        assert response.status_code == 401
+
+# ==========================================
+# API PROTECTION TESTS (RATE LIMITING)
+# ==========================================
+
+def test_rate_limiting_predict():
+    with TestClient(app) as client:
+        payload = {
+            "surface_reelle_bati": 80,
+            "nombre_pieces_principales": 4,
+            "longitude": 5.9072,
+            "latitude": 46.1709,
+            "est_maison": 1
+        }
+        status_codes = []
+        for _ in range(10):
+            response = client.post("/api/predict", json=payload)
+            status_codes.append(response.status_code)
+            
+        assert 429 in status_codes
