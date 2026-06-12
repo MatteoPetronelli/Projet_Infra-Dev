@@ -17,10 +17,6 @@ def train_model():
             nombre_pieces_principales as pieces,
             type_local as type_bien
         FROM ventes
-        WHERE valeur_fonciere > 0 
-        AND surface_reelle_bati > 0 
-        AND nombre_pieces_principales > 0
-        AND type_local IN ('Appartement', 'Maison')
     """).df()
     
     df_agence = conn.execute("""

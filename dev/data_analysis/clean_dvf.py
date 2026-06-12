@@ -34,6 +34,18 @@ df_propre = df_ml.group_by("id_mutation").agg([
     pl.col("latitude").first()
 ])
 
+q1 = df_propre.select(pl.col("valeur_fonciere").quantile(0.25)).item()
+q3 = df_propre.select(pl.col("valeur_fonciere").quantile(0.75)).item()
+iqr = q3 - q1
+
+limite_basse = q1 - 1.5 * iqr
+limite_haute = q3 + 1.5 * iqr
+
+df_propre = df_propre.filter(
+    (pl.col("valeur_fonciere") >= limite_basse) &
+    (pl.col("valeur_fonciere") <= limite_haute)
+)
+
 print(df_propre.head())
 print(df_propre.shape)
 

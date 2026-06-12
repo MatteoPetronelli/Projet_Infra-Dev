@@ -7,12 +7,6 @@ df = df.with_columns(
     (pl.col("type_local") == "Maison").cast(pl.Int32).alias("est_maison")
 )
 
-df = df.filter(
-    (pl.col("surface_reelle_bati") >= 9) &
-    (pl.col("surface_reelle_bati") <= 500) &
-    (pl.col("nombre_pieces_principales") <= 20)
-)
-
 df_sample = df.sample(n=5000, seed=42)
 df_pandas = df_sample.to_pandas()
 
